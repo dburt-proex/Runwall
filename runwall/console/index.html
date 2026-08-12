@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Runwall — Operator Console</title>
+<link rel="stylesheet" href="/console/styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>&#128737;</text></svg>">
+</head>
+<body>
+
+<!-- ── login ─────────────────────────────────────────────────────────── -->
+<div class="login" id="login">
+  <div class="card">
+    <h1>Runwall</h1>
+    <p>Operator console. Password and authenticator code are both required.</p>
+    <label for="op">Operator ID</label>
+    <input type="text" id="op" autocomplete="username" spellcheck="false">
+    <label for="pw">Password</label>
+    <input type="password" id="pw" autocomplete="current-password">
+    <label for="tp">Authenticator code</label>
+    <input type="text" id="tp" inputmode="numeric" autocomplete="one-time-code"
+           maxlength="6" placeholder="000000" spellcheck="false">
+    <div class="actions">
+      <button class="btn go" id="loginBtn">Authenticate</button>
+    </div>
+    <div class="err hide" id="loginErr"></div>
+    <p class="foot">
+      No operator enrolled yet? Run <code>runwall enroll</code> in a terminal.
+      Step-up authentication is an <em>attribution</em> control — it records which
+      named operator authorised a decision. It is not a barrier against a process
+      already running as that operator.
+    </p>
+  </div>
+</div>
+
+<!-- ── app ───────────────────────────────────────────────────────────── -->
+<div class="app hide" id="app">
+  <aside class="rail">
+    <div class="brand"><b>Runwall</b><span id="ver"></span></div>
+    <div><span class="chip s-ARMED" id="stateChip"><i class="dot live"></i><span id="stateText">…</span></span></div>
+    <nav id="nav">
+      <button data-view="perimeter" aria-current="true"><span>Perimeter</span></button>
+      <button data-view="tunnel"><span>Tunnel</span><span class="badge hide" id="feedCount">0</span></button>
+      <button data-view="approvals"><span>Approvals</span><span class="badge hide" id="apCount">0</span></button>
+      <button data-view="ledger"><span>Ledger</span></button>
+      <button data-view="policy"><span>Policy</span></button>
+      <button data-view="sessions"><span>Sessions</span></button>
+    </nav>
+    <div style="margin-top:auto;display:flex;flex-direction:column;gap:8px">
+      <button class="btn" id="themeBtn" style="font-size:12px">Toggle theme</button>
+      <button class="btn" id="logoutBtn" style="font-size:12px">Sign out</button>
+      <div class="foot" id="posture"></div>
+    </div>
+  </aside>
+
+  <main>
+    <div id="banners"></div>
+
+    <!-- perimeter -->
+    <section data-panel="perimeter">
+      <div class="head">
+        <div>
+          <h1>Perimeter</h1>
+          <p>Every instrumented tool call is evaluated before it runs. Actions taken
+             through paths Runwall does not instrument are not mediated — see
+             <code>docs/UNINSTRUMENTED_PATHS.md</code>.</p>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:14px">
+        <div class="switchbox">
+          <button class="switch" id="armSwitch" data-on="true"
+                  aria-label="Arm or disarm the perimeter"></button>
+          <div style="flex:1;min-width:240px">
+            <h2 id="switchTitle">Armed</h2>
+            <p style="color:var(--fg-2);margin:5px 0 0" id="switchSub"></p>
+          </div>
+          <button class="btn danger" id="killBtn">Kill switch</button>
+        </div>
+        <div id="disarmBox" class="hide" style="margin-top:16px;border-top:1px solid var(--line);padding-top:16px">
+          <div class="grid g2">
+            <div>
+              <label for="dReason">Reason (recorded in the ledger, required)</label>
+              <input type="text" id="dReason" placeholder="why are you disarming?">
+            </div>
+            <div>
+              <label for="dScope">Scope — a project path, never global</label>
+              <input type="text" id="dScope" placeholder="C:\path\to\project">
+            </div>
+            <div>
+              <label for="dSecs">Auto-rearm after (seconds)</label>
+              <input type="number" id="dSecs" value="900" min="60" max="7200">
+            </div>
+            <div>
+              <label for="dTotp">Authenticator code</label>
+              <input type="text" id="dTotp" inputmode="numeric" maxlength="6" placeholder="000000">
+            </div>
+          </div>
+          <div class="actions">
+            <button class="btn danger" id="disarmGo">Disarm</button>
+            <button class="btn" id="disarmCancel">Cancel</button>
+            <span style="color:var(--fg-3);font-size:12px">
+              HALT-class actions stay refused while disarmed. There is no permanent off switch.
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid g3" id="stats"></div>
+    </section>
+
+    <!-- tunnel -->
+    <section data-panel="tunnel" class="hide">
+      <div class="head">
+        <div><h1>Tunnel</h1>
+          <p>Live decision stream. Every route is recorded, including ALLOW — a ledger
+             of refusals alone cannot answer what an agent actually did.</p></div>
+        <span class="chip s-SAFE"><i class="dot live"></i><span id="sseState">connecting</span></span>
+      </div>
+      <div class="card" style="padding:0"><div class="feed" id="feed"></div></div>
+    </section>
+
+    <!-- approvals -->
+    <section data-panel="approvals" class="hide">
+      <div class="head">
+        <div><h1>Approvals</h1>
+          <p>A blocked call waits here. Approving issues a scoped, time-boxed grant
+             keyed to the action's intent, so the agent's retry proceeds without you
+             having to hold a socket open.</p></div>
+      </div>
+      <div id="apList"></div>
+    </section>
+
+    <!-- ledger -->
+    <section data-panel="ledger" class="hide">
+      <div class="head">
+        <div><h1>Ledger</h1>
+          <p>Hash-chained and tamper-<em>evident</em> — modification is detectable,
+             not prevented. Contains prompts, paths and arguments: treat it as
+             sensitive data.</p></div>
+        <button class="btn" id="verifyBtn">Verify chain</button>
+      </div>
+      <div class="card" style="margin-bottom:14px">
+        <div class="actions" style="margin:0">
+          <select id="fRoute" style="width:auto">
+            <option value="">all routes</option><option>ALLOW</option>
+            <option>REVIEW</option><option>HALT</option>
+          </select>
+          <input type="text" id="fAction" placeholder="filter by action…" style="width:220px">
+          <button class="btn" id="refreshLedger">Refresh</button>
+          <span id="ledgerStats" style="color:var(--fg-3);font-size:12px"></span>
+        </div>
+      </div>
+      <div class="card scroll" style="padding:0"><table id="ledgerTable"></table></div>
+    </section>
+
+    <!-- policy -->
+    <section data-panel="policy" class="hide">
+      <div class="head">
+        <div><h1>Policy</h1>
+          <p>Deterministic rules — regex, path comparison, set membership. No rule
+             consults a language model, which is why an agent cannot argue its way
+             past one.</p></div>
+      </div>
+      <div id="policyMeta" class="card" style="margin-bottom:14px"></div>
+      <pre class="raw" id="policyRaw"></pre>
+    </section>
+
+    <!-- sessions -->
+    <section data-panel="sessions" class="hide">
+      <div class="head">
+        <div><h1>Sessions</h1>
+          <p>Taint marks a session that has consumed untrusted external content.
+             It raises the gate floor until the next genuine user turn, so
+             instructions arriving through a tool result cannot reach a
+             consequential action unsupervised.</p></div>
+      </div>
+      <div class="card scroll" style="padding:0"><table id="sessTable"></table></div>
+    </section>
+
+    <div class="foot">
+      Runwall mediates agent actions at instrumented chokepoints. An agent cannot argue,
+      persuade, or prompt-inject its way past a decision — the decider is out-of-process
+      and deterministic. It can act through a path Runwall does not instrument.
+      Tamper-evident, not tamper-proof. Fail-closed with respect to mediated paths.
+      Enforcement strength is bounded by OS privilege separation.
+    </div>
+  </main>
+</div>
+
+<script src="/console/app.js"></script>
+</body>
+</html>

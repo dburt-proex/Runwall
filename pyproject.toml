@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "runwall"
+version = "1.0.0"
+description = "Runtime governance for agentic execution. Diffwall guards what gets written; Runwall guards what gets done."
+requires-python = ">=3.11"
+# One dependency. A policy enforcement point that drags in a transitive
+# dependency tree has enlarged the attack surface it exists to reduce.
+dependencies = ["PyYAML>=6.0"]
+
+[project.scripts]
+runwall = "runwall.cli:main"
+
+[tool.setuptools]
+packages = ["runwall", "runwall.rules"]
+
+[tool.setuptools.package-data]
+runwall = ["console/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

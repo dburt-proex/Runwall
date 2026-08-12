@@ -1,0 +1,175 @@
+# Runwall default policy
+#
+# This file is hash-pinned. `runwall pin` records its SHA-256 into
+# policy/manifest.json; a mismatch at load drops the perimeter to SAFE rather
+# than running on unverified rules. After editing, re-pin deliberately -- the
+# friction is the point.
+#
+# Every action label below is emitted by runwall/classify.py. The loader checks
+# both directions: a label with no entry here refuses to start, and an entry no
+# classifier emits refuses to start too. Dead policy that reads as coverage is
+# its own hazard.
+
+version: 1
+
+# Diffwall's defaults, unchanged, so a score means the same thing in both tools.
+thresholds:
+  review: 40
+  halt: 75
+
+tool_classes:
+  read:    [Read, NotebookRead, Grep, Glob, TodoRead]
+  write:   [Write, Edit, MultiEdit, NotebookEdit]
+  exec:    [Bash, BashOutput, KillShell]
+  network: [WebFetch, WebSearch]
+
+gate_matrix:
+  # --- read: reversible, local, inspectable -------------------------------
+  read_local_file:            ALLOW
+  search_local:               ALLOW
+  list_directory:             ALLOW
+
+  # --- write: local and recoverable, except where the target is protected --
+  write_local_file:           ALLOW
+  edit_local_file:            ALLOW
+  write_protected_path:       REVIEW
+  delete_file:                REVIEW
+
+  # --- execute -------------------------------------------------------------
+  run_shell_command:          ALLOW
+  # Effects occur inside a process Runwall never observes. Priced for that
+  # opacity, not for the string being scary.
+  run_interpreter:            REVIEW
+  install_dependency:         REVIEW
+  run_git_local:              ALLOW
+  run_git_remote:             REVIEW
+
+  # --- leaving the machine -------------------------------------------------
+  fetch_external_content:     ALLOW
+  send_external_message:      REVIEW
+  upload_or_publish:          REVIEW
+
+  # --- destructive ---------------------------------------------------------
+  destroy_data:               HALT
+  destroy_storage:            HALT
+  rewrite_history:            REVIEW
+
+  # --- the wall protecting itself -----------------------------------------
+  modify_governor:            HALT
+  modify_harness_config:      HALT
+  terminate_governor:         HALT
+  launch_ungoverned_harness:  HALT
+  read_governor_secrets:      HALT
+
+  # Reaching this label means classify.py saw something it could not place.
+  unknown_action:             REVIEW
+
+# Glob patterns. Writes here are REVIEW even when the action looks ordinary.
+# Seeded from Diffwall's rules/default.yml protectedPaths.
+protected_paths:
+  - "*/.github/workflows/*"
+  - "*/package.json"
+  - "*/package-lock.json"
+  - "*/pnpm-lock.yaml"
+  - "*/yarn.lock"
+  - "*/requirements.txt"
+  - "*/pyproject.toml"
+  - "*/go.mod"
+  - "*/go.sum"
+  - "*/Cargo.toml"
+  - "*/src/auth/*"
+  - "*/src/security/*"
+  - "*/auth/*"
+  - "*/security/*"
+  - "*/billing/*"
+  - "*/db/migrations/*"
+  - "*/migrations/*"
+  - "*/.env"
+  - "*/.env.*"
+  - "*/id_rsa"
+  - "*/.ssh/*"
+  - "*/.aws/*"
+  - "*/.npmrc"
+  - "*/.pypirc"
+
+# Literal strings that are never acceptable, matched against normalized text so
+# the encoded forms a raw-diff scan would miss are caught here.
+# Seeded from Diffwall's haltPatterns.
+halt_patterns:
+  - "DROP TABLE"
+  - "TRUNCATE TABLE"
+  - "rm -rf /"
+  - "chmod 777"
+  - "rejectUnauthorized: false"
+  - "verify: false"
+  - "verify=False"
+  - "NODE_TLS_REJECT_UNAUTHORIZED=0"
+  - "curl -k "
+  - "--insecure"
+  - "history -c"
+  - "Clear-EventLog"
+  - "wevtutil cl"
+
+egress:
+  # Host-level gating only. Runwall does not inspect TLS bodies and will not
+  # install a local CA -- a CA whose key the agent can read is a net-negative
+  # trade. An allowlisted host can still be used to exfiltrate; budgets below
+  # are what bound that, not this list.
+  allow_domains:
+    - "api.anthropic.com"
+    - "registry.npmjs.org"
+    - "pypi.org"
+    - "files.pythonhosted.org"
+    - "github.com"
+    - "api.github.com"
+    - "raw.githubusercontent.com"
+    - "objects.githubusercontent.com"
+    - "crates.io"
+    - "proxy.golang.org"
+  deny_domains:
+    - "pastebin.com"
+    - "hastebin.com"
+    - "transfer.sh"
+    - "file.io"
+    - "0x0.st"
+    - "ngrok.io"
+    - "trycloudflare.com"
+    - "webhook.site"
+    - "requestbin.com"
+    - "burpcollaborator.net"
+    - "interact.sh"
+    - "oast.fun"
+
+# Accumulators. These defeat decomposition -- the attack where one HALT is split
+# into N individually-allowable calls.
+budgets:
+  egress_bytes_per_session: 10485760      # 10 MB
+  distinct_domains_per_session: 12
+  deletes_per_hour: 40
+  reviews_per_hour: 25                    # flooding the operator is an attack
+  breach_route: REVIEW
+
+approval:
+  timeout_seconds: 300                    # then SUSPEND, never auto-allow
+  suspend_after_seconds: 300
+  hard_ceiling_seconds: 3600              # suspended this long -> refuse
+  denial_memory_seconds: 3600             # verdict-shopping window
+  fatigue_approvals_per_hour: 10          # above this, approvals are low-assurance
+  step_up_totp_for_high_blast: true
+  unattended_review_halts: true
+
+taint:
+  # Content fetched from outside this machine may contain instructions aimed at
+  # the agent. It cannot be trusted to raise its own gate, so consuming it
+  # raises the floor for everything after it until a real user turn.
+  exposed_floor: ALLOW
+  instructed_floor: REVIEW
+  clear_on_user_turn: true
+
+# Files whose modification would weaken enforcement. Runwall refuses to touch
+# these regardless of who asks. `runwall harden` additionally ACLs them to the
+# governor's own service account, which is what makes this a lock rather than
+# a tripwire.
+harness_config_paths:
+  - "~/.claude/settings.json"
+  - "~/.claude/settings.local.json"
