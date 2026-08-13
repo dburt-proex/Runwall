@@ -217,9 +217,14 @@ class OperatorStore:
         if not rec:
             return None, "no operator enrolled - run `runwall enroll`"
 
-        ok = (hmac.compare_digest(rec["operator_id"], operator_id)
-              and verify_password(password, rec["password"])
-              and verify_totp(rec["totp_secret"], totp))
+        # Every factor is evaluated, then combined. Short-circuiting with `and`
+        # meant a wrong operator id returned before the ~100 ms scrypt
+        # derivation ran, so the id was enumerable by timing despite the
+        # deliberately uniform failure message below.
+        id_ok = hmac.compare_digest(rec["operator_id"], operator_id)
+        pw_ok = verify_password(password, rec["password"])
+        totp_ok = verify_totp(rec["totp_secret"], totp)
+        ok = id_ok & pw_ok & totp_ok
         if not ok:
             with self._lock:
                 self._failed += 1

@@ -51,7 +51,7 @@ _HISTORY_WIPE = re.compile(
 @register("secrets")
 def literal_secret_present(env, policy, session) -> list[Finding]:
     """A credential appearing verbatim in a tool call."""
-    m = _SECRET_LITERAL.search(env.normalized)
+    m = _SECRET_LITERAL.search(env.normalized_action)
     if not m:
         return []
     return [Finding(
@@ -68,16 +68,16 @@ def literal_secret_present(env, policy, session) -> list[Finding]:
 @register("secrets")
 def exfiltration(env, policy, session) -> list[Finding]:
     """Secret material AND an outbound channel in the same action."""
-    outbound = _OUTBOUND.search(env.normalized)
+    outbound = _OUTBOUND.search(env.normalized_action)
     if not outbound:
         return []
 
     carriers = []
-    if _SECRET_REF.search(env.normalized):
+    if _SECRET_REF.search(env.normalized_action):
         carriers.append("environment credential reference")
-    if _SECRET_FILE.search(env.normalized):
+    if _SECRET_FILE.search(env.normalized_action):
         carriers.append("credential file")
-    if _SECRET_LITERAL.search(env.normalized):
+    if _SECRET_LITERAL.search(env.normalized_action):
         carriers.append("literal credential")
     if not carriers:
         return []
@@ -91,7 +91,7 @@ def exfiltration(env, policy, session) -> list[Finding]:
         evidence=[outbound.group(0)],
         halt=True,
     )]
-    if _ENCODE_THEN_SEND.search(env.normalized):
+    if _ENCODE_THEN_SEND.search(env.normalized_action):
         findings.append(Finding(
             ruleId="secrets.encoded_exfiltration",
             severity="critical",
@@ -106,10 +106,10 @@ def exfiltration(env, policy, session) -> list[Finding]:
 @register("secrets")
 def credential_file_read(env, policy, session) -> list[Finding]:
     """Reading credential stores. Ordinary alone; taint-relevant in aggregate."""
-    m = _SECRET_FILE.search(env.normalized)
+    m = _SECRET_FILE.search(env.normalized_action)
     if not m:
         return []
-    if _OUTBOUND.search(env.normalized):
+    if _OUTBOUND.search(env.normalized_action):
         return []          # already covered, and at HALT, by exfiltration()
     return [Finding(
         ruleId="secrets.credential_access",
@@ -124,7 +124,7 @@ def credential_file_read(env, policy, session) -> list[Finding]:
 def anti_forensics(env, policy, session) -> list[Finding]:
     """Clearing shell history or event logs. There is no benign version of this
     inside an automated agent run."""
-    m = _HISTORY_WIPE.search(env.normalized)
+    m = _HISTORY_WIPE.search(env.normalized_action)
     if not m:
         return []
     return [Finding(

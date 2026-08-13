@@ -187,6 +187,11 @@ CONTROLS = [
     ("ok-hooks-word", "Write", {"file_path": "docs/hooks.md",
                                 "content": "# Webhooks\nOur webhook policy is documented here."},
      "ALLOW", "the words 'webhook' and 'policy' are not self-protection hits"),
+    ("ok-security-doc", "Write",
+     {"file_path": "docs/THREAT_MODEL.md",
+      "content": "Evict ~/.aws/credentials, .env and gh auth token, or the broker "
+                 "is cosmetic. See policy/default.yml and ~/.claude/settings.json."},
+     "ALLOW", "writing security documentation that NAMES sensitive paths"),
     ("ok-echo", "Bash", {"command": "echo 'build complete'"}, "ALLOW", "trivial echo"),
     ("ok-mkdir", "Bash", {"command": "mkdir -p build/artifacts"}, "ALLOW", "creating a directory"),
 ]

@@ -227,10 +227,18 @@ def canonical_path(p: str) -> str:
 
     # Windows discards trailing dots and spaces in path components; a denylist
     # that does not will miss "policy.yml." pointing at "policy.yml".
+    # A leading double separator is what makes a path UNC. Splitting on
+    # [\\/]+ and rejoining with a single os.sep silently converted
+    # \\server\share into \server\share -- a root-relative local path, not the
+    # remote path the OS would actually act on, so every comparison downstream
+    # was made against the wrong target.
+    unc = p[:2] in ("\\\\", "//")
     parts = re.split(r"[\\/]+", p)
     parts = [seg.rstrip(" .") if i or not re.match(r"^[a-zA-Z]:$", seg) else seg
              for i, seg in enumerate(parts)]
     p = os.sep.join(parts)
+    if unc:
+        p = os.sep * 2 + p.lstrip("\\/")
 
     p = _long_path(p)
     try:
@@ -249,6 +257,19 @@ def canonical_path(p: str) -> str:
 # look.
 _TEXT_PARAMS = ("command", "content", "new_string", "prompt", "query", "url", "pattern")
 _PATH_PARAMS = ("file_path", "path", "notebook_path", "cwd")
+
+# The action/content split. A shell command IS the action, so its text is what
+# the action does. A file's contents are DATA the action stores -- prose that
+# happens to mention `.env` is not an attempt to read `.env`.
+#
+# Collapsing the two means a document describing a threat model trips the threat
+# rules, and security documentation becomes unwritable while the wall is armed.
+# That is not a hypothetical: it blocked a write to an unrelated file and is the
+# reason this split exists. False positives are security failures here, because
+# every over-block trains the operator toward disarming.
+_ACTION_PARAMS = ("command", "url", "query", "pattern")
+_CONTENT_PARAMS = ("content", "new_string", "prompt")
+_WRITE_TOOLS = ("Write", "Edit", "MultiEdit", "NotebookEdit")
 
 # Path-shaped tokens inside free text (a shell command names its targets in the
 # command string, not in a path parameter). Matching *canonicalized tokens*
@@ -302,6 +323,10 @@ class ActionEnvelope:
     # Derived at construction -- never supplied by the caller.
     text: str = ""
     normalized: str = ""
+    # Action text only -- excludes file contents. Rules that reason about what
+    # an action DOES match on this; only injection rules, which are about what
+    # gets stored for the next reader, scan `normalized`.
+    normalized_action: str = ""
     # Folded but NOT deobfuscated. Some signals live in the encoding itself --
     # a 30-character base64 DNS label is evidence of a covert channel, and
     # successfully decoding it destroys exactly the structure that made it
@@ -375,6 +400,16 @@ class ActionEnvelope:
         self.normalized_raw = _WS.sub(
             " ", unicodedata.normalize("NFC", self.text)).strip().casefold()
 
+        action_chunks = [v for k, v in self.raw_params.items()
+                         if k in _ACTION_PARAMS and isinstance(v, str)]
+        action_chunks += [v for k, v in self.raw_params.items()
+                          if k in _PATH_PARAMS and isinstance(v, str)]
+        if not action_chunks and not any(k in _CONTENT_PARAMS for k in self.raw_params):
+            # Unknown tool shape with nothing recognisably content-like: treat
+            # the whole payload as action text rather than exempting it.
+            action_chunks = [v for v in self.raw_params.values() if isinstance(v, str)]
+        self.normalized_action = normalize_text("\n".join(action_chunks))
+
         seen: list[str] = []
         for key in _PATH_PARAMS:
             val = self.raw_params.get(key)
@@ -383,11 +418,26 @@ class ActionEnvelope:
                 if cp and cp not in seen:
                     seen.append(cp)
         self.paths = seen
-        self.text_paths = [p for p in extract_paths(decoded) if p not in seen]
+        # Only mine ACTION text for paths. Pulling them out of file contents is
+        # what made a document about `.env` indistinguishable from a write to
+        # `.env`.
+        action_source, _ = deep_decode(unicodedata.normalize("NFC", "\n".join(action_chunks)))
+        self.text_paths = [p for p in extract_paths(action_source) if p not in seen]
 
     def all_paths(self) -> list[str]:
-        """Declared parameters and paths named inside command text."""
+        """Declared parameters plus paths named in action text."""
         return self.paths + self.text_paths
+
+    def target_paths(self) -> list[str]:
+        """Paths this action acts ON, as opposed to paths it merely names.
+
+        For a write tool the target is the declared `file_path`; anything inside
+        `content` is data. For a shell command the targets genuinely live in the
+        command string, so both sources count.
+        """
+        if self.tool in _WRITE_TOOLS:
+            return list(self.paths)
+        return self.all_paths()
 
     def to_dict(self) -> dict:
         return {

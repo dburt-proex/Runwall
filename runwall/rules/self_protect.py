@@ -61,9 +61,9 @@ def _is_read_only(env) -> bool:
         return False
     if env.tool != "Bash":
         return False
-    if _WRITE_INDICATOR.search(env.normalized):
+    if _WRITE_INDICATOR.search(env.normalized_action):
         return False
-    return bool(_READ_VERB.search(env.normalized))
+    return bool(_READ_VERB.search(env.normalized_action))
 
 # Process control aimed at the governor.
 _KILL = [
@@ -124,7 +124,7 @@ def _targets_self(env, policy) -> list[str]:
     than none, because it is the rule an operator learns to click past.
     """
     protected = _self_paths(policy)
-    return [p for p in env.all_paths()
+    return [p for p in env.target_paths()
             if any(_under(p, prot) for prot in protected)]
 
 
@@ -151,7 +151,7 @@ def touch_own_files(env, policy, session) -> list[Finding]:
 
     hits = _targets_self(env, policy)
 
-    m = _SELF_FILENAMES.search(env.normalized)
+    m = _SELF_FILENAMES.search(env.normalized_action)
     if m and m.group(1) not in hits:
         hits.append(m.group(1))
 
@@ -183,9 +183,9 @@ def touch_own_files(env, policy, session) -> list[Finding]:
 def modify_harness_config(env, policy, session) -> list[Finding]:
     """Writes to the Claude Code settings that register the hook."""
     targets = [canonical_path(os.path.expanduser(p)) for p in policy.harness_config_paths]
-    hits = [p for p in env.all_paths() if p in targets]
+    hits = [p for p in env.target_paths() if p in targets]
     if not hits and re.search(r"(?<![\w.-])\.claude[\\/]settings(\.local)?\.json",
-                              env.normalized):
+                              env.normalized_action):
         hits = ["<.claude/settings.json referenced in command text>"]
     if not hits:
         return []
@@ -202,8 +202,8 @@ def modify_harness_config(env, policy, session) -> list[Finding]:
 @register("self_protect")
 def kill_governor(env, policy, session) -> list[Finding]:
     for pat in _KILL:
-        if pat.search(env.normalized):
-            m = pat.search(env.normalized)
+        if pat.search(env.normalized_action):
+            m = pat.search(env.normalized_action)
             return [Finding(
                 ruleId="self_protect.kill_governor",
                 severity="critical",
@@ -218,7 +218,7 @@ def kill_governor(env, policy, session) -> list[Finding]:
 @register("self_protect")
 def ungoverned_harness(env, policy, session) -> list[Finding]:
     for pat in _UNGOVERNED_HARNESS:
-        m = pat.search(env.normalized)
+        m = pat.search(env.normalized_action)
         if m:
             return [Finding(
                 ruleId="self_protect.ungoverned_harness",
@@ -234,7 +234,7 @@ def ungoverned_harness(env, policy, session) -> list[Finding]:
 @register("self_protect")
 def interpreter_hijack(env, policy, session) -> list[Finding]:
     for pat in _INTERPRETER_HIJACK:
-        m = pat.search(env.normalized)
+        m = pat.search(env.normalized_action)
         if m:
             return [Finding(
                 ruleId="self_protect.interpreter_hijack",
@@ -252,7 +252,7 @@ def interpreter_hijack(env, policy, session) -> list[Finding]:
 @register("self_protect")
 def disable_hook(env, policy, session) -> list[Finding]:
     for pat in _HOOK_DISABLE:
-        m = pat.search(env.normalized)
+        m = pat.search(env.normalized_action)
         if m:
             return [Finding(
                 ruleId="self_protect.disable_hook",
@@ -269,10 +269,10 @@ def disable_hook(env, policy, session) -> list[Finding]:
 def read_governor_secrets(env, policy, session) -> list[Finding]:
     """Reading the client token is how an agent would talk to /decide directly."""
     secrets = [canonical_path(p) for p in policy.secret_paths()]
-    hits = [p for p in env.all_paths() if p in secrets]
+    hits = [p for p in env.target_paths() if p in secrets]
     if not hits:
         m = re.search(r"(?<![\w.-])(client\.token|approval\.key|operator\.json)(?![\w-])",
-                      env.normalized)
+                      env.normalized_action)
         if m:
             hits = [m.group(1)]
     if not hits:

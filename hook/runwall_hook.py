@@ -58,14 +58,36 @@ FALLBACK_DENY = [
     (r"\bsitecustomize\.py\b|\busercustomize\.py\b|set\s+pythonpath\b|\$env:pythonpath",
      "interpreter substitution"),
     (r"client\.token|approval\.key|chain\.anchor|operator\.json",
-     "reading governor key material"),
-    (r"runwall[/\\](policy|runwall|hook)\b", "modifying Runwall's own files"),
+     "accessing governor key material"),
+    (r"runwall[/\\](policy|runwall|hook)\b", "reaching Runwall's own files"),
     (r":\s*\(\s*\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:", "fork bomb"),
     (r"\bchmod\s+(-[a-z]+\s+)*777\b", "world-writable permissions"),
 ]
 _FALLBACK = [(re.compile(p, re.IGNORECASE), why) for p, why in FALLBACK_DENY]
 
 READ_TOOLS = {"Read", "NotebookRead", "Grep", "Glob", "TodoRead", "TodoWrite"}
+WRITE_TOOLS = {"Write", "Edit", "MultiEdit", "NotebookEdit"}
+
+# Mirrors envelope._ACTION_PARAMS / _CONTENT_PARAMS. Duplicated deliberately:
+# this file must keep working when the runwall package is missing or broken.
+ACTION_KEYS = {"command", "url", "query", "pattern", "file_path", "path",
+               "notebook_path", "cwd"}
+CONTENT_KEYS = {"content", "new_string", "prompt"}
+
+_READ_VERB = re.compile(
+    r"(?:^|[|;&]\s*)\s*(cat|tail|head|less|more|wc|nl|type|get-content|gc|grep|"
+    r"rg|findstr|select-string|stat|diff|cmp)\b", re.IGNORECASE)
+_WRITE_HINT = re.compile(
+    r"(>>?\s*\S|\btee\b|\bmv\b|\bcp\b|\brm\b|\bdel\b|set-content|add-content|"
+    r"out-file|remove-item|new-item)", re.IGNORECASE)
+
+
+def _is_read(text: str, tool: str) -> bool:
+    if tool in READ_TOOLS:
+        return True
+    if tool in WRITE_TOOLS:
+        return False
+    return bool(_READ_VERB.search(text)) and not _WRITE_HINT.search(text)
 
 _B64 = re.compile(r"[A-Za-z0-9+/]{16,}={0,2}")
 _PS_ENC = re.compile(r"-(?:enc|e|ec|encodedcommand)\s+([A-Za-z0-9+/=]{16,})", re.IGNORECASE)
@@ -126,11 +148,26 @@ def fallback(payload: dict, why_unreachable: str) -> None:
     """DEGRADED: the governor is not answering."""
     tool = payload.get("tool_name", "")
     params = payload.get("tool_input") or {}
-    text = _decode(" ".join(str(v) for v in params.values() if isinstance(v, str)))
+
+    # Action text only. Scanning file CONTENTS here meant writing a document that
+    # merely mentions `.env` or a policy path was refused as though it were an
+    # attack on those paths -- which made security documentation unwritable while
+    # the wall was armed. Content is data; the command is the action.
+    action = " ".join(str(v) for k, v in params.items()
+                      if k in ACTION_KEYS and isinstance(v, str))
+    if not action:
+        action = " ".join(str(v) for k, v in params.items()
+                          if k not in CONTENT_KEYS and isinstance(v, str))
+    text = _decode(action)
 
     for pat, why in _FALLBACK:
         if pat.search(text):
-            respond("deny", f"[DEGRADED] {why} - refused without a governor. "
+            # Say what was actually attempted. The governor distinguishes reads
+            # from writes; this path used to call every match a modification, so
+            # the two enforcement paths disagreed in the ledger.
+            verb = "read of" if _is_read(text, tool) else "modification of"
+            label = why if why.startswith("accessing") or "launch" in why else f"{verb} {why}"
+            respond("deny", f"[DEGRADED] {label} - refused without a governor. "
                             f"({why_unreachable})")
 
     _spool(payload, why_unreachable)

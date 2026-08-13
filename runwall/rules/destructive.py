@@ -5,7 +5,7 @@ storage. These are the findings that carry ``halt=True`` rather than a score,
 because their cost is not proportional to a threshold -- a dropped table is not
 40% bad.
 
-Every pattern here matches against ``env.normalized``, which has already been
+Every pattern here matches against ``env.normalized_action``, which has already been
 base64-decoded, backtick-stripped, concat-collapsed and NFC-folded by
 ``envelope.normalize_text``. Writing these patterns against raw text would make
 them trivially evadable.
@@ -86,14 +86,14 @@ _DECODE_EXEC = re.compile(
 
 
 def _ev(env, pattern: re.Pattern) -> list[str]:
-    m = pattern.search(env.normalized)
+    m = pattern.search(env.normalized_action)
     return [m.group(0)[:200]] if m else []
 
 
 @register("destructive")
 def recursive_delete(env, policy, session) -> list[Finding]:
     for pat in _RECURSIVE_DELETE:
-        if pat.search(env.normalized):
+        if pat.search(env.normalized_action):
             return [Finding(
                 ruleId="destructive.recursive_delete",
                 severity="critical",
@@ -110,7 +110,7 @@ def recursive_delete(env, policy, session) -> list[Finding]:
 def storage_destruction(env, policy, session) -> list[Finding]:
     out = []
     for pat, label in _STORAGE:
-        if pat.search(env.normalized):
+        if pat.search(env.normalized_action):
             out.append(Finding(
                 ruleId="destructive.storage",
                 severity="critical",
@@ -126,7 +126,7 @@ def storage_destruction(env, policy, session) -> list[Finding]:
 def sql_destruction(env, policy, session) -> list[Finding]:
     out = []
     for pat, label in _SQL:
-        if pat.search(env.normalized):
+        if pat.search(env.normalized_action):
             out.append(Finding(
                 ruleId="destructive.sql",
                 severity="critical",
@@ -142,7 +142,7 @@ def sql_destruction(env, policy, session) -> list[Finding]:
 def git_history(env, policy, session) -> list[Finding]:
     out = []
     for pat, label, halt in _GIT:
-        if pat.search(env.normalized):
+        if pat.search(env.normalized_action):
             out.append(Finding(
                 ruleId="destructive.git",
                 severity="critical" if halt else "high",
@@ -158,7 +158,7 @@ def git_history(env, policy, session) -> list[Finding]:
 def permission_widening(env, policy, session) -> list[Finding]:
     out = []
     for pat, label in _PERMS:
-        if pat.search(env.normalized):
+        if pat.search(env.normalized_action):
             out.append(Finding(
                 ruleId="destructive.permissions",
                 severity="high",
@@ -171,7 +171,7 @@ def permission_widening(env, policy, session) -> list[Finding]:
 
 @register("destructive")
 def fork_bomb(env, policy, session) -> list[Finding]:
-    if _FORKBOMB.search(env.normalized):
+    if _FORKBOMB.search(env.normalized_action):
         return [Finding(
             ruleId="destructive.fork_bomb",
             severity="critical",
@@ -185,7 +185,7 @@ def fork_bomb(env, policy, session) -> list[Finding]:
 @register("destructive")
 def decode_and_execute(env, policy, session) -> list[Finding]:
     """Piping a decoder or a download straight into an interpreter."""
-    m = _DECODE_EXEC.search(env.normalized)
+    m = _DECODE_EXEC.search(env.normalized_action)
     if not m:
         return []
     return [Finding(
@@ -204,7 +204,7 @@ def protected_path_write(env, policy, session) -> list[Finding]:
     """Writes to paths the policy marks protected (lockfiles, migrations, auth)."""
     if env.tool not in ("Write", "Edit", "NotebookEdit", "MultiEdit"):
         return []
-    hits = [p for p in env.all_paths() if policy.is_protected(p)]
+    hits = [p for p in env.target_paths() if policy.is_protected(p)]
     if not hits:
         return []
     return [Finding(
@@ -226,7 +226,7 @@ def halt_pattern(env, policy, session) -> list[Finding]:
     """
     out = []
     for literal in policy.halt_patterns:
-        if literal.casefold() in env.normalized:
+        if literal.casefold() in env.normalized_action:
             out.append(Finding(
                 ruleId="destructive.halt_pattern",
                 severity="critical",

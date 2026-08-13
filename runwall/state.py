@@ -61,10 +61,18 @@ class Disarm:
         return time.time() < self.until
 
     def covers(self, cwd: str) -> bool:
-        """Scoped to a project path. A global disarm is not offered."""
+        """Scoped to a project path. A global disarm is not offered.
+
+        Compares on a path boundary, not a string prefix. Bare `startswith`
+        meant a scope of ``C:\\proj`` also covered ``C:\\project2`` and
+        ``C:\\proj-secrets`` -- unrelated repositories silently receiving relief
+        the operator never granted.
+        """
         if self.scope in ("", "*"):
             return True
-        return os.path.normcase(cwd or "").startswith(os.path.normcase(self.scope))
+        scope = os.path.normcase(os.path.normpath(self.scope))
+        here = os.path.normcase(os.path.normpath(cwd or ""))
+        return here == scope or here.startswith(scope.rstrip(os.sep) + os.sep)
 
     def to_dict(self) -> dict:
         return {"reason": self.reason, "scope": self.scope, "operator": self.operator,
@@ -135,6 +143,19 @@ class Perimeter:
     def disarm_info(self) -> dict | None:
         with self._lock:
             return self._disarm.to_dict() if self._disarm and self._disarm.active() else None
+
+    def disarm_covers(self, cwd: str) -> dict | None:
+        """The active disarm ONLY if it covers this working directory.
+
+        `disarm_info()` answers "is a disarm active anywhere", which is the right
+        question for display and the wrong one for a gate decision. Callers that
+        relax a route must use this instead -- using the former is what made the
+        scope field security theatre on the cap path.
+        """
+        with self._lock:
+            if self._disarm and self._disarm.active() and self._disarm.covers(cwd):
+                return self._disarm.to_dict()
+        return None
 
     # -- heartbeat ----------------------------------------------------------
 

@@ -67,7 +67,7 @@ _TRAVERSAL = re.compile(r"(\.\.[\\/]){2,}")
 def persistence(env, policy, session) -> list[Finding]:
     out = []
     for pat, why in _PERSISTENCE:
-        m = pat.search(env.normalized)
+        m = pat.search(env.normalized_action)
         if m:
             out.append(Finding(
                 ruleId="scope.persistence",
@@ -86,7 +86,7 @@ def persistence(env, policy, session) -> list[Finding]:
 def privilege_escalation(env, policy, session) -> list[Finding]:
     out = []
     for pat, why in _PRIVILEGE:
-        m = pat.search(env.normalized)
+        m = pat.search(env.normalized_action)
         if m:
             out.append(Finding(
                 ruleId="scope.privilege",
@@ -104,7 +104,7 @@ def privilege_escalation(env, policy, session) -> list[Finding]:
 def security_disable(env, policy, session) -> list[Finding]:
     out = []
     for pat, why in _SECURITY_DISABLE:
-        m = pat.search(env.normalized)
+        m = pat.search(env.normalized_action)
         if m:
             out.append(Finding(
                 ruleId="scope.security_disable",
@@ -126,7 +126,7 @@ def link_creation(env, policy, session) -> list[Finding]:
     PreToolUse hook structurally cannot close, since it decides on a path string
     and never holds the handle.
     """
-    m = _LINK_CREATE.search(env.normalized)
+    m = _LINK_CREATE.search(env.normalized_action)
     if not m:
         return []
     return [Finding(
@@ -141,7 +141,7 @@ def link_creation(env, policy, session) -> list[Finding]:
 
 @register("scope")
 def traversal(env, policy, session) -> list[Finding]:
-    if not _TRAVERSAL.search(env.normalized):
+    if not _TRAVERSAL.search(env.normalized_action):
         return []
     return [Finding(
         ruleId="scope.traversal",

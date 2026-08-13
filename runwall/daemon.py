@@ -312,6 +312,13 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
 
 
+def _clamp(value, lo: int, hi: int, default: int) -> int:
+    try:
+        return max(lo, min(hi, int(value)))
+    except (TypeError, ValueError):
+        return default
+
+
 def _decision_response(d) -> dict:
     return {
         "route": d.route,
@@ -336,10 +343,27 @@ def _feed_item(d) -> dict:
         "blast": d.blast, "reasons": d.reasons[:6],
         "findings": [f["ruleId"] for f in d.findings],
         "operator": d.operator, "latency_ms": d.latency_ms,
-        "summary": (d.envelope.get("raw_params", {}).get("command")
-                    or d.envelope.get("raw_params", {}).get("file_path")
-                    or d.tool)[:200] if d.envelope else d.tool,
+        "summary": _summary_of(d),
     }
+
+
+def _summary_of(d) -> str:
+    """A short display string, defensively.
+
+    Tool parameters are agent-controlled and arbitrary JSON. Slicing whatever
+    `command` happens to hold raised TypeError on a dict and returned HTTP 500,
+    which the hook maps to deny -- fail-closed for one call, but repeatable at
+    will, producing a stream of refusals that looks like a broken governor and
+    drives the operator to disarm. Never let display formatting decide a route.
+    """
+    params = (d.envelope or {}).get("raw_params") or {}
+    for key in ("command", "file_path", "path", "url", "pattern", "query"):
+        val = params.get(key) if isinstance(params, dict) else None
+        if isinstance(val, str) and val.strip():
+            return val[:200]
+        if val is not None and not isinstance(val, str):
+            return f"{d.tool}({key}=<{type(val).__name__}>)"[:200]
+    return str(d.tool)[:200]
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -373,6 +397,26 @@ class Handler(BaseHTTPRequestHandler):
         h = self.headers.get("Authorization") or ""
         return h[7:].strip() if h.lower().startswith("bearer ") else ""
 
+    def _origin_ok(self) -> bool:
+        """Reject cross-origin and rebound-DNS requests.
+
+        The bearer token is the real control; this is the second layer. Without
+        it, a page that rebinds an attacker domain to 127.0.0.1 becomes
+        same-origin with the governor, and a single token leak (a screenshot, a
+        pasted curl, a shared log) becomes full operator control with no further
+        check. For a product whose thesis is layered enforcement, one layer is
+        the wrong number.
+        """
+        host = (self.headers.get("Host") or "").strip().lower()
+        expected = {f"127.0.0.1:{self.server.server_address[1]}",
+                    f"localhost:{self.server.server_address[1]}"}
+        if host and host not in expected:
+            return False
+        origin = (self.headers.get("Origin") or "").strip().lower()
+        if origin and origin.split("//")[-1] not in expected:
+            return False
+        return True
+
     def _client_ok(self) -> bool:
         import hmac as _hmac
         return _hmac.compare_digest(self._bearer(), self.governor.client_token)
@@ -391,6 +435,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):  # noqa: N802
         try:
+            if not self._origin_ok():
+                self._json(403, {"error": "bad Host or Origin"})
+                return
             self._route_post(urllib.parse.urlparse(self.path).path)
         except Exception as exc:  # noqa: BLE001
             self._json(500, {"error": f"{type(exc).__name__}: {exc}",
@@ -455,11 +502,15 @@ class Handler(BaseHTTPRequestHandler):
                                                 "authenticator code to approve"})
                     return
                 g.operators.consume_step_up(self._bearer())
+            # Clamped server-side. A negative `grant_uses` produced a grant that
+            # never depleted (live() tests `!= 0`, consume_grant only decrements
+            # `> 0`), and `grant_seconds` was unbounded -- the console offers
+            # "grant 15 min" but the server enforced nothing.
             self._json(200, g.resolve_approval(
                 body.get("approval_id", ""), approve=approve, operator=operator,
                 note=body.get("note", ""),
-                grant_seconds=int(body.get("grant_seconds") or 900),
-                grant_uses=int(body.get("grant_uses") or 1)))
+                grant_seconds=_clamp(body.get("grant_seconds"), 30, 3600, 900),
+                grant_uses=_clamp(body.get("grant_uses"), 1, 50, 1)))
             return
 
         if path == "/api/disarm":
@@ -593,8 +644,13 @@ class Handler(BaseHTTPRequestHandler):
 
     def _serve_console(self, path: str) -> None:
         rel = "index.html" if path in ("/", "/index.html") else path[len("/console/"):]
-        target = os.path.normpath(os.path.join(CONSOLE_DIR, rel))
-        if not target.startswith(os.path.normpath(CONSOLE_DIR)) or not os.path.isfile(target):
+        root = os.path.normpath(CONSOLE_DIR)
+        target = os.path.normpath(os.path.join(root, rel))
+        # Boundary comparison, not a bare prefix: `../console_backup/x`
+        # normalizes to a sibling directory that startswith(root) accepts, and
+        # this branch is served before any authentication check.
+        if (target != root and not target.startswith(root.rstrip(os.sep) + os.sep)) \
+                or not os.path.isfile(target):
             self._json(404, {"error": "not found"})
             return
         ctype = mimetypes.guess_type(target)[0] or "application/octet-stream"

@@ -72,7 +72,7 @@ def _matches_domain(host: str, rule: str) -> bool:
 
 @register("egress")
 def destination_gating(env, policy, session) -> list[Finding]:
-    hosts = _hosts(env.normalized)
+    hosts = _hosts(env.normalized_action)
     if not hosts:
         return []
 
@@ -113,7 +113,7 @@ def destination_gating(env, policy, session) -> list[Finding]:
             ))
 
     if hosts:
-        session.record_egress(len(env.normalized), hosts[0])
+        session.record_egress(len(env.normalized_action), hosts[0])
     return out
 
 
@@ -121,7 +121,7 @@ def destination_gating(env, policy, session) -> list[Finding]:
 def proxy_evasion(env, policy, session) -> list[Finding]:
     out = []
     for pat, why in _PROXY_EVASION:
-        m = pat.search(env.normalized)
+        m = pat.search(env.normalized_action)
         if m:
             out.append(Finding(
                 ruleId="egress.proxy_evasion",
@@ -149,7 +149,7 @@ def covert_channel(env, policy, session) -> list[Finding]:
         (_TUNNEL, "egress.tunnel",
          "reverse tunnel or relay — exposes this machine to an external endpoint"),
     ):
-        m = pat.search(env.normalized) or pat.search(env.normalized_raw)
+        m = pat.search(env.normalized_action) or pat.search(env.normalized_raw)
         if m:
             out.append(Finding(
                 ruleId=rule_id, severity="critical", score=100,

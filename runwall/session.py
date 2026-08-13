@@ -69,6 +69,7 @@ class SessionState:
     deletes: deque = field(default_factory=deque)
     reviews: deque = field(default_factory=deque)
     approvals: deque = field(default_factory=deque)
+    approval_latencies: deque = field(default_factory=deque)
 
     denied_intents: dict[str, dict] = field(default_factory=dict)
     decisions: int = 0
@@ -122,7 +123,15 @@ class SessionState:
         self.reviews.append(time.time())
 
     def record_approval(self, latency: float) -> None:
+        """Record an approval and the seconds the operator took to decide.
+
+        The latency was previously accepted and discarded while the fatigue
+        metric recomputed it in ApprovalBroker.stats() -- a signature promising
+        data it never stored. Kept per-session so a future per-session fatigue
+        rule reads a real value.
+        """
         self.approvals.append(time.time())
+        self.approval_latencies.append(max(0.0, float(latency)))
 
     def budget_breaches(self, policy) -> list[str]:
         b = policy.budgets

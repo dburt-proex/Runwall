@@ -178,11 +178,15 @@ def decide(env, policy, session, perimeter, *, operator_present: bool = False) -
 
     # Disarm caps, never below HALT, never for the always-denied classes.
     if perimeter.state == DISARMED and route != HALT and action not in ALWAYS_DENIED:
-        d = perimeter.disarm_info()
+        # disarm_covers(), not disarm_info(): a disarm scoped to one project must
+        # not relax anything in another. The scope field is only a control if
+        # every path that grants relief consults it.
+        d = perimeter.disarm_covers(env.cwd)
         if d:
             route = ALLOW
             reasons.append(f"perimeter disarmed by {d['operator']} "
-                           f"({d['remaining_s']}s remaining) - route capped to ALLOW")
+                           f"({d['remaining_s']}s remaining, scope "
+                           f"{d['scope'] or '<all>'}) - route capped to ALLOW")
 
     if route == HALT:
         session.record_denial(env, route, reasons)
