@@ -29,7 +29,11 @@ ACTIONS = frozenset({
     # destructive
     "destroy_data", "destroy_storage", "rewrite_history",
     # governance self-protection
-    "modify_governor", "modify_harness_config", "terminate_governor",
+    # `modify_governor` / `read_governor_files` target Runwall's own source and
+    # are liftable by a maintenance window. `touch_sealed_surface` and the rest
+    # are not liftable by anything.
+    "modify_governor", "read_governor_files", "touch_sealed_surface",
+    "modify_harness_config", "terminate_governor",
     "launch_ungoverned_harness", "read_governor_secrets",
     # fallback
     "unknown_action",
@@ -44,8 +48,9 @@ def known_actions() -> set[str]:
 # concluded something specific, the label must agree with it rather than
 # re-deriving a milder one from the same text.
 _FROM_RULE = {
+    "self_protect.sealed_surface": "touch_sealed_surface",
     "self_protect.modify_governor": "modify_governor",
-    "self_protect.read_governor_files": "read_governor_secrets",
+    "self_protect.read_governor_files": "read_governor_files",
     "self_protect.harness_config": "modify_harness_config",
     "self_protect.kill_governor": "terminate_governor",
     "self_protect.ungoverned_harness": "launch_ungoverned_harness",

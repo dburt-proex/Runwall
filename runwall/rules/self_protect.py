@@ -128,6 +128,13 @@ def _targets_self(env, policy) -> list[str]:
             if any(_under(p, prot) for prot in protected)]
 
 
+def _targets_sealed(env, policy) -> list[str]:
+    """Paths that stay refused at every perimeter state, maintenance included."""
+    sealed = policy.sealed_paths()
+    return [p for p in env.target_paths()
+            if any(_under(p, s) for s in sealed)]
+
+
 # Filenames distinctive enough that naming one in a command is itself the
 # signal, regardless of the path written around it. Anchored with boundaries so
 # they cannot match as a fragment of a longer word.
@@ -158,14 +165,31 @@ def touch_own_files(env, policy, session) -> list[Finding]:
     if not hits:
         return []
 
+    # Sealed targets -- the ledger, the anchor, key material -- are reported
+    # separately so the gate can refuse them at every perimeter state. Source
+    # targets are refused too, but a maintenance window can lift them; that
+    # distinction has to exist in the finding, not only in the gate, or the
+    # ledger cannot show which kind of refusal happened.
+    sealed = _targets_sealed(env, policy)
+    if sealed:
+        return [Finding(
+            ruleId="self_protect.sealed_surface",
+            severity="critical",
+            score=100,
+            message=("action reaches Runwall's ledger, chain anchor or key "
+                     "material - refused at every perimeter state, maintenance "
+                     "included"),
+            files=sealed,
+            halt=True,
+        )]
+
     if _is_read_only(env):
         return [Finding(
             ruleId="self_protect.read_governor_files",
             severity="critical",
             score=100,
-            message=("action reads Runwall's own ledger, policy, keys or code - "
-                     "the ledger holds prompts, paths and arguments, so reads "
-                     "are gated as well as writes"),
+            message=("action reads Runwall's own policy or code - reachable "
+                     "only during an authenticated maintenance window"),
             files=hits,
             halt=True,
         )]
@@ -173,7 +197,8 @@ def touch_own_files(env, policy, session) -> list[Finding]:
         ruleId="self_protect.modify_governor",
         severity="critical",
         score=100,
-        message="action modifies Runwall's own policy, ledger, keys or code",
+        message=("action modifies Runwall's own policy or code - reachable "
+                 "only during an authenticated maintenance window"),
         files=hits,
         halt=True,
     )]

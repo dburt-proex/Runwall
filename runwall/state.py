@@ -41,13 +41,57 @@ ARMED, DEGRADED, SAFE, DISARMED = "ARMED", "DEGRADED", "SAFE", "DISARMED"
 # Actions that are refused at every rung except a scoped, authenticated DISARM.
 # This is the reduced rule set the cached-policy fallback enforces.
 ALWAYS_DENIED = frozenset({
-    "modify_governor", "modify_harness_config", "terminate_governor",
+    "modify_governor", "read_governor_files", "touch_sealed_surface",
+    "modify_harness_config", "terminate_governor",
     "launch_ungoverned_harness", "read_governor_secrets",
     "destroy_data", "destroy_storage", "rewrite_history",
 })
 
+# What a maintenance window lifts, and only that. Changing how the wall DECIDES
+# is maintenance; rewriting what it RECORDED, reading the keys that authenticate
+# the operator, or removing the enforcement hook are not -- those would make the
+# window an off switch wearing a lab coat.
+MAINTAINABLE = frozenset({"modify_governor", "read_governor_files"})
+
+# Never liftable, by disarm or maintenance or anything else.
+SEALED = ALWAYS_DENIED - MAINTAINABLE
+
 # Actions still permitted in SAFE. Read-only: enough to plan, not enough to act.
 SAFE_ALLOWED = frozenset({"read_local_file", "search_local", "list_directory"})
+
+
+@dataclass
+class Maintenance:
+    """An authenticated window in which Runwall's own source may be edited.
+
+    Exists because the alternative was worse. Without it the only way to patch
+    or audit Runwall is to uninstall the enforcement hook entirely, and a
+    security tool that must be fully removed to be maintained will eventually be
+    left removed. Trading a narrow, authenticated, time-boxed, loudly-logged
+    window for that outcome is the better bargain.
+
+    Deliberately narrower than a disarm:
+      * lifts only MAINTAINABLE -- Runwall's code and policy, nothing else
+      * the ledger, chain anchor, key material and harness config stay sealed
+      * every ordinary rule still applies to every other action
+      * requires the governor to be RUNNING, so there is no on-disk grant an
+        agent could forge; a stopped governor means no maintenance, which is
+        also why DEGRADED refuses as before
+    """
+
+    reason: str
+    operator: str
+    until: float
+    granted_at: float = field(default_factory=time.time)
+    actions: int = 0
+
+    def active(self) -> bool:
+        return time.time() < self.until
+
+    def to_dict(self) -> dict:
+        return {"reason": self.reason, "operator": self.operator,
+                "until": self.until, "actions": self.actions,
+                "remaining_s": max(0, int(self.until - time.time()))}
 
 
 @dataclass
@@ -88,6 +132,7 @@ class Perimeter:
         self._state = ARMED
         self._reasons: list[str] = []
         self._disarm: Disarm | None = None
+        self._maintenance: Maintenance | None = None
         self._heartbeat_seq = 0
         self._last_heartbeat = time.time()
         self.spooled = 0
@@ -143,6 +188,45 @@ class Perimeter:
     def disarm_info(self) -> dict | None:
         with self._lock:
             return self._disarm.to_dict() if self._disarm and self._disarm.active() else None
+
+    # -- maintenance --------------------------------------------------------
+
+    def begin_maintenance(self, *, reason: str, operator: str,
+                          seconds: int) -> Maintenance:
+        """Open a maintenance window. Callers must have passed step-up TOTP.
+
+        Capped at one hour. A maintenance window long enough to forget about is
+        a disarm, and this is deliberately not that.
+        """
+        m = Maintenance(reason=reason, operator=operator,
+                        until=time.time() + max(60, min(3600, seconds)))
+        with self._lock:
+            self._maintenance = m
+        self._persist()
+        return m
+
+    def end_maintenance(self) -> None:
+        with self._lock:
+            self._maintenance = None
+        self._persist()
+
+    def maintenance_info(self) -> dict | None:
+        with self._lock:
+            if self._maintenance and self._maintenance.active():
+                return self._maintenance.to_dict()
+            self._maintenance = None
+        return None
+
+    def maintenance_allows(self, action: str) -> dict | None:
+        """The active window, but only for actions it is permitted to lift."""
+        if action not in MAINTAINABLE:
+            return None
+        with self._lock:
+            if self._maintenance and self._maintenance.active():
+                self._maintenance.actions += 1
+                return self._maintenance.to_dict()
+            self._maintenance = None
+        return None
 
     def disarm_covers(self, cwd: str) -> dict | None:
         """The active disarm ONLY if it covers this working directory.
@@ -222,6 +306,7 @@ class Perimeter:
             "state": self.state,
             "reasons": self.reasons(),
             "disarm": self.disarm_info(),
+            "maintenance": self.maintenance_info(),
             "heartbeat_seq": self._heartbeat_seq,
             "heartbeat_age_s": round(self.heartbeat_age(), 1),
             "spooled_events": self.spooled,

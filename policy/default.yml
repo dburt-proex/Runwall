@@ -55,7 +55,18 @@ gate_matrix:
   rewrite_history:            REVIEW
 
   # --- the wall protecting itself -----------------------------------------
+  # These two target Runwall's own code and policy. HALT by default; an
+  # authenticated maintenance window (`runwall maintenance`, step-up TOTP,
+  # time-boxed, every action logged) is the only thing that lifts them. The
+  # alternative was uninstalling enforcement to patch it, and a tool that must
+  # be removed to be maintained gets left removed.
   modify_governor:            HALT
+  read_governor_files:        HALT
+
+  # These are sealed. No perimeter state reaches them -- not disarm, not
+  # maintenance. Rewriting what the wall recorded, reading the keys that
+  # authenticate the operator, or removing the hook are not maintenance.
+  touch_sealed_surface:       HALT
   modify_harness_config:      HALT
   terminate_governor:         HALT
   launch_ungoverned_harness:  HALT

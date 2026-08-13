@@ -56,11 +56,13 @@ def _get(args, path: str, timeout: float = 5.0) -> dict:
         return json.loads(r.read())
 
 
-def _post(args, path: str, body: dict, timeout: float = 30.0) -> dict:
+def _post(args, path: str, body: dict, timeout: float = 30.0,
+          token: str | None = None) -> dict:
     req = urllib.request.Request(
         _url(args, path), data=json.dumps(body).encode(), method="POST",
         headers={"Content-Type": "application/json",
-                 "Authorization": f"Bearer {_token()}"})
+                 "Host": f"{args.host}:{args.port}",
+                 "Authorization": f"Bearer {_token() if token is None else token}"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read())
 
@@ -322,6 +324,69 @@ def cmd_claims(args) -> int:
     return run_audit(args)
 
 
+def cmd_maintenance(args) -> int:
+    """Open a window in which Runwall's own source may be edited.
+
+    Requires the governor running and a fresh authenticator code. There is
+    deliberately no on-disk grant an agent could forge, which is also why a
+    stopped governor means no maintenance.
+    """
+    import getpass as _gp
+
+    if args.end:
+        try:
+            tok = _operator_token(args)
+            r = _post(args, "/api/maintenance/end", {}, token=tok)
+        except (urllib.error.URLError, urllib.error.HTTPError, OSError) as exc:
+            print(f"{C['red']}{exc}{C['reset']}", file=sys.stderr)
+            return 1
+        closed = r.get("closed") or {}
+        print(f"{C['green']}maintenance closed{C['reset']} — "
+              f"{closed.get('actions', 0)} action(s) in that window")
+        return 0
+
+    reason = args.reason or input("reason (recorded in the ledger): ").strip()
+    if not reason:
+        print(f"{C['red']}a typed reason is required{C['reset']}", file=sys.stderr)
+        return 1
+
+    try:
+        tok = _operator_token(args)
+        code = _gp.getpass("authenticator code: ").strip()
+        _post(args, "/auth/stepup", {"totp": code}, token=tok)
+        r = _post(args, "/api/maintenance",
+                  {"reason": reason, "seconds": args.minutes * 60}, token=tok)
+    except urllib.error.HTTPError as exc:
+        import json as _j
+        msg = _j.loads(exc.read() or b"{}").get("message") or exc.reason
+        print(f"{C['red']}{msg}{C['reset']}", file=sys.stderr)
+        return 1
+    except (urllib.error.URLError, OSError) as exc:
+        print(f"{C['red']}governor unreachable ({exc}) — maintenance requires a "
+              f"running governor by design{C['reset']}", file=sys.stderr)
+        return 1
+
+    print(f"{C['green']}maintenance open{C['reset']} for {r['remaining_s']}s")
+    print(f"  lifts   {C['bold']}modify_governor{C['reset']} and "
+          f"{C['bold']}read_governor_files{C['reset']} — Runwall's own code and policy")
+    print(f"  sealed  ledger · chain anchor · key material · harness config")
+    print(f"  {C['dim']}every action in this window is logged and counted; "
+          f"it auto-closes.{C['reset']}")
+    print(f"\n  close early:  runwall maintenance --end")
+    return 0
+
+
+def _operator_token(args) -> str:
+    """Authenticate as the operator for a privileged CLI action."""
+    import getpass as _gp
+    operator = args.operator or input("operator id: ").strip()
+    pw = _gp.getpass("password: ")
+    code = _gp.getpass("authenticator code: ").strip()
+    r = _post(args, "/auth/login",
+              {"operator_id": operator, "password": pw, "totp": code}, token="")
+    return r["token"]
+
+
 # --------------------------------------------------------------------------
 
 
@@ -376,6 +441,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("claims-audit",
                    help="fail the build on overclaiming language").set_defaults(func=cmd_claims)
+
+    mt = sub.add_parser("maintenance",
+                        help="open a window to edit Runwall's own source")
+    mt.add_argument("--reason", help="recorded in the ledger; required")
+    mt.add_argument("--minutes", type=int, default=15)
+    mt.add_argument("--operator")
+    mt.add_argument("--end", action="store_true", help="close the window now")
+    mt.set_defaults(func=cmd_maintenance)
     return p
 
 

@@ -241,6 +241,36 @@ class Governor:
         self.broadcast("state_changed", self.perimeter.snapshot())
         return d.to_dict()
 
+    def begin_maintenance(self, *, operator: str, reason: str, seconds: int) -> dict:
+        m = self.perimeter.begin_maintenance(reason=reason, operator=operator,
+                                             seconds=seconds)
+        self.ledger.note("maintenance_opened", {
+            "ts": _now(),
+            "operator": {"id": operator, "method": "step_up_totp"},
+            "route": REVIEW,
+            "reasons": [f"maintenance window opened for {seconds}s",
+                        f"reason: {reason}",
+                        "lifts modify_governor and read_governor_files only; "
+                        "ledger, chain anchor, key material and harness config "
+                        "remain sealed"],
+            "perimeter_state": self.perimeter.state,
+        })
+        self.broadcast("state_changed", self.perimeter.snapshot())
+        return m.to_dict()
+
+    def end_maintenance(self, operator: str) -> dict:
+        info = self.perimeter.maintenance_info()
+        self.perimeter.end_maintenance()
+        self.ledger.note("maintenance_closed", {
+            "ts": _now(),
+            "operator": {"id": operator, "method": "console"},
+            "reasons": [f"maintenance window closed after "
+                        f"{(info or {}).get('actions', 0)} action(s)"],
+            "perimeter_state": self.perimeter.state,
+        })
+        self.broadcast("state_changed", self.perimeter.snapshot())
+        return {"ok": True, "closed": info}
+
     def rearm(self, operator: str) -> dict:
         self.perimeter.rearm()
         if self.policy.pinned or "no manifest" in self.policy.pin_message:
@@ -525,6 +555,25 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, g.disarm(operator=operator, reason=body["reason"],
                                      scope=body.get("scope", ""),
                                      seconds=int(body.get("seconds") or 900)))
+            return
+
+        if path == "/api/maintenance":
+            if not g.operators.has_step_up(self._bearer()):
+                self._json(403, {"error": "step_up_required",
+                                 "message": "opening a maintenance window requires "
+                                            "a fresh authenticator code"})
+                return
+            if not (body.get("reason") or "").strip():
+                self._json(400, {"error": "a typed reason is required"})
+                return
+            g.operators.consume_step_up(self._bearer())
+            self._json(200, g.begin_maintenance(
+                operator=operator, reason=body["reason"],
+                seconds=_clamp(body.get("seconds"), 60, 3600, 900)))
+            return
+
+        if path == "/api/maintenance/end":
+            self._json(200, g.end_maintenance(operator))
             return
 
         if path == "/api/rearm":

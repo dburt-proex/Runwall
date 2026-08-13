@@ -110,6 +110,28 @@ DISARMED   TOTP + typed reason · scoped to one project · time-boxed ·
            never authorise dismantling the wall
 ```
 
+### Maintaining Runwall itself
+
+Runwall refuses edits and reads of its own source. Without a way in, the only
+route to patching or auditing it is uninstalling the hook — and a security tool
+that must be *removed* to be maintained will eventually be left removed. That is
+a worse outcome than the bug the refusal was preventing.
+
+```bash
+runwall maintenance --reason "apply audit fixes" --minutes 15
+runwall maintenance --end
+```
+
+Requires the governor running and a fresh authenticator code. Time-boxed, auto-
+closing, every action counted and logged.
+
+It lifts exactly two action classes — `modify_governor` and
+`read_governor_files`, meaning Runwall's own code and policy. **The ledger, the
+chain anchor, key material and the harness config stay sealed at every perimeter
+state**, maintenance included. Changing how the wall decides is maintenance;
+rewriting what it recorded is not. There is deliberately no on-disk grant an
+agent could forge, which is also why a stopped governor means no maintenance.
+
 Two invariants at every rung: never auto-allow on timeout, and "governor down"
 never looks like "governor said yes."
 

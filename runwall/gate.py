@@ -35,7 +35,7 @@ from datetime import datetime, timezone
 from . import blast as blast_mod
 from . import classify
 from .rules import Finding, evaluate_all
-from .state import ALWAYS_DENIED, DISARMED
+from .state import ALWAYS_DENIED, DISARMED, MAINTAINABLE
 
 ALLOW, REVIEW, HALT = "ALLOW", "REVIEW", "HALT"
 _SEVERITY = {ALLOW: 0, REVIEW: 1, HALT: 2}
@@ -75,6 +75,7 @@ class Decision:
     blast: dict = field(default_factory=dict)
     reasons: list[str] = field(default_factory=list)
     perimeter_state: str = "ARMED"
+    maintenance: dict | None = None
     taint: int = 0
     budgets_breached: list[str] = field(default_factory=list)
     prior_denial: dict | None = None
@@ -100,6 +101,7 @@ class Decision:
             "blast": self.blast,
             "reasons": self.reasons,
             "perimeter_state": self.perimeter_state,
+            "maintenance": self.maintenance,
             "taint": self.taint,
             "budgets_breached": self.budgets_breached,
             "prior_denial": self.prior_denial,
@@ -177,6 +179,22 @@ def decide(env, policy, session, perimeter, *, operator_present: bool = False) -
                        "unattended review resolves to refusal")
 
     # Disarm caps, never below HALT, never for the always-denied classes.
+    # A maintenance window lifts exactly two action classes -- edits and reads of
+    # Runwall's own source -- and nothing else. Unlike disarm it CAN reach a
+    # HALT, because these actions are HALT by default and the window exists
+    # precisely to make them reachable. Everything sealed stays sealed:
+    # `maintenance_allows` returns None for any action outside MAINTAINABLE, so
+    # the ledger, the chain anchor, key material and the harness config are
+    # untouched by this branch.
+    if action in MAINTAINABLE:
+        m = perimeter.maintenance_allows(action)
+        if m:
+            route = ALLOW
+            reasons.append(
+                f"maintenance window opened by {m['operator']} "
+                f"({m['remaining_s']}s remaining, action {m['actions']} of this "
+                f"window): {m['reason']}")
+
     if perimeter.state == DISARMED and route != HALT and action not in ALWAYS_DENIED:
         # disarm_covers(), not disarm_info(): a disarm scoped to one project must
         # not relax anything in another. The scope field is only a control if
@@ -216,6 +234,7 @@ def decide(env, policy, session, perimeter, *, operator_present: bool = False) -
         blast=br.to_dict(),
         reasons=reasons,
         perimeter_state=perimeter.state,
+        maintenance=perimeter.maintenance_info(),
         taint=session.taint,
         budgets_breached=breaches,
         prior_denial=prior,

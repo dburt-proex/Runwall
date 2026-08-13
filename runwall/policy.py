@@ -91,7 +91,7 @@ class Policy:
         return "unknown"
 
     def self_protected_paths(self) -> list[str]:
-        """Files whose modification would weaken the wall.
+        """Every path whose modification would weaken the wall.
 
         Deliberately the enforcement surface only -- not the whole repository.
         Protecting the bare root would make editing Runwall's own README or
@@ -99,11 +99,33 @@ class Policy:
         obviously-safe work is the rule an operator learns to click past, and
         then keeps clicking past when it fires for real.
         """
+        return self.source_paths() + self.sealed_paths()
+
+    def source_paths(self) -> list[str]:
+        """Runwall's own code and policy.
+
+        Refused normally, but reachable during an authenticated maintenance
+        window. A security tool that can only be patched by removing it will
+        eventually be left removed -- which is a worse outcome than the bug the
+        refusal was preventing.
+        """
         root = self.runwall_root
         return [canonical_path(p) for p in (
             os.path.join(root, "policy"),
             os.path.join(root, "runwall"),
             os.path.join(root, "hook"),
+        ) if p]
+
+    def sealed_paths(self) -> list[str]:
+        """Key material, the ledger, and the chain anchor.
+
+        Never reachable, by any state of the perimeter. Maintenance exists to
+        let the operator change how the wall DECIDES; it does not let anyone
+        rewrite what the wall RECORDED, or read the keys that authenticate the
+        operator. A maintenance mode that reached these would be an off switch
+        wearing a lab coat.
+        """
+        return [canonical_path(p) for p in (
             self.state_dir(),
             self.ledger_path(),
             self.anchor_path(),
