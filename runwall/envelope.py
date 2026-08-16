@@ -241,10 +241,17 @@ def canonical_path(p: str) -> str:
         p = os.sep * 2 + p.lstrip("\\/")
 
     p = _long_path(p)
+    p_before_realpath = p
     try:
         p = os.path.realpath(p)
     except (OSError, ValueError):
         pass
+    # On POSIX, realpath may collapse a leading "//" to "/", but a UNC path
+    # must keep exactly two leading separators to remain a network path.
+    # Restore from the pre-resolve form rather than stripping slashes from the
+    # potentially-resolved absolute path, which may have a different host.
+    if unc and not (p.startswith("\\\\") or p.startswith("//")):
+        p = os.sep * 2 + p_before_realpath.lstrip("/\\")
     return os.path.normcase(os.path.normpath(p))
 
 

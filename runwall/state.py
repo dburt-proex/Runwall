@@ -114,9 +114,9 @@ class Disarm:
         """
         if self.scope in ("", "*"):
             return True
-        scope = os.path.normcase(os.path.normpath(self.scope))
-        here = os.path.normcase(os.path.normpath(cwd or ""))
-        return here == scope or here.startswith(scope.rstrip(os.sep) + os.sep)
+        scope = os.path.normcase(os.path.normpath(self.scope)).replace("\\", "/")
+        here = os.path.normcase(os.path.normpath(cwd or "")).replace("\\", "/")
+        return here == scope or here.startswith(scope.rstrip("/") + "/")
 
     def to_dict(self) -> dict:
         return {"reason": self.reason, "scope": self.scope, "operator": self.operator,
