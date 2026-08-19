@@ -32,6 +32,15 @@ _RECURSIVE_DELETE = [
     re.compile(r"\brd\b\s+/s\b", re.IGNORECASE),
     re.compile(r"\brmdir\b\s+/s\b", re.IGNORECASE),
     re.compile(r"\bdel\b(?=[^|;&\n]*/s)(?=[^|;&\n]*/q)", re.IGNORECASE),
+    # `find` performs its own recursion, so none of these need `rm -rf` --
+    # `-delete` never invokes rm at all, and `-exec rm {} \;` / `| xargs rm`
+    # hand find's matches to a completely bare `rm` with no -r/-f flags for
+    # the three `rm` patterns above to catch. `find X -delete` in particular
+    # reached full ALLOW with zero findings before this fix: no `rm` token to
+    # match against at all.
+    re.compile(r"\bfind\b[^|;\n]*-delete\b"),
+    re.compile(r"\bfind\b[^|;\n]*-exec(dir)?\s+rm\b"),
+    re.compile(r"\bfind\b[^|;\n]*\|\s*xargs\b[^|;\n]*\brm\b"),
 ]
 
 # The patterns above require -Recurse and -Force to sit in the SAME pipe-free

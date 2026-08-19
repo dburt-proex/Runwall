@@ -298,6 +298,38 @@ def test_recursive_delete_co_occurrence_does_not_fire_on_recursive_reads(ctx):
         assert not any(f["ruleId"] == "destructive.recursive_delete" for f in d.findings), cmd
 
 
+@pytest.mark.parametrize("cmd", [
+    r"find important/ -type f -exec rm {} \;",
+    r"find important/ -type f -exec rm {} +",
+    "find important/ -delete",
+    "find important/ | xargs rm",
+    r"find important/ -type f -execdir rm {} \;",
+])
+def test_recursive_delete_catches_find_recursion(ctx, cmd):
+    """`find` performs its own recursion, so none of these need `rm -rf`:
+    `-delete` never invokes rm at all, and `-exec rm {} \\;` / `| xargs rm`
+    hand find's matches to a completely bare `rm` with no -r/-f flags for the
+    three `rm` patterns (which all require the flag co-located with `rm`
+    itself) to catch. `find X -delete` reached full ALLOW with zero findings
+    before this fix -- there was no `rm` token in the command at all."""
+    pol, sess, per = ctx
+    d = decide(envelope("Bash", {"command": cmd}), pol, sess, per, operator_present=True)
+    assert d.route == HALT, (cmd, d.route)
+    assert any(f["ruleId"] == "destructive.recursive_delete" for f in d.findings)
+
+
+def test_find_exec_does_not_fire_on_non_destructive_actions(ctx):
+    """The new find patterns must require rm/-delete specifically, not just
+    the presence of -exec or a pipe to xargs."""
+    pol, sess, per = ctx
+    for cmd in (r"find . -name '*.py' -exec grep -l TODO {} \;",
+                "find . -type f | xargs wc -l",
+                "find . -name '*.log' -mtime +30",
+                "find . -type f | xargs cat"):
+        d = decide(envelope("Bash", {"command": cmd}), pol, sess, per, operator_present=True)
+        assert not any(f["ruleId"] == "destructive.recursive_delete" for f in d.findings), cmd
+
+
 def test_read_tool_on_a_protected_file_is_caught(ctx):
     """Previously only Bash and write tools were inspected, so a plain Read of
     the ledger slipped past this rule entirely."""
