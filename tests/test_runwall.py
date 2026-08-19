@@ -233,6 +233,39 @@ def test_read_verb_with_a_write_indicator_is_a_modification(ctx):
     assert d.route == HALT and d.action == "modify_governor"
 
 
+@pytest.mark.parametrize("cmd", [
+    "Get-Process runwall | Stop-Process",
+    "Get-Process runwall | Stop-Process -Force",
+    "Get-Process python | Stop-Process -Force",
+    "gps python | spps",
+])
+def test_kill_governor_catches_the_pipeline_idiom(ctx, cmd):
+    """Every _KILL pattern assumed the target name appears AFTER the kill verb
+    in one pipe-free segment. PowerShell's idiomatic `Get-Process X |
+    Stop-Process` -- and its short aliases -- names the target BEFORE the
+    verb, across a pipe `[^|;\\n]*` deliberately excludes, and reached ALLOW
+    with zero findings before this fix. That is a direct violation of
+    THREAT_MODEL.md's stated invariant: "no single tool call should be able
+    to disable enforcement, and no attempt should be unlogged."
+    """
+    pol, sess, per = ctx
+    d = decide(envelope("Bash", {"command": cmd}), pol, sess, per, operator_present=True)
+    assert d.route == HALT, (cmd, d.route)
+    assert any(f["ruleId"] == "self_protect.kill_governor" for f in d.findings)
+
+
+def test_kill_governor_co_occurrence_does_not_fire_on_word_kill_alone(ctx):
+    """The order-independent co-occurrence check must still require BOTH a
+    kill-shaped verb and the governor's process identity -- not just the
+    English word "kill" anywhere near an unrelated process name."""
+    pol, sess, per = ctx
+    for cmd in ("taskkill /f /im notepad.exe",
+                "stop-process -name chrome -force",
+                "git commit -m 'kill flaky test retries'"):
+        d = decide(envelope("Bash", {"command": cmd}), pol, sess, per, operator_present=True)
+        assert not any(f["ruleId"] == "self_protect.kill_governor" for f in d.findings), cmd
+
+
 def test_read_tool_on_a_protected_file_is_caught(ctx):
     """Previously only Bash and write tools were inspected, so a plain Read of
     the ledger slipped past this rule entirely."""

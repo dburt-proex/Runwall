@@ -77,6 +77,24 @@ _KILL = [
     re.compile(r"\bsc\b\s+(stop|delete)\b[^|;\n]*runwall"),
 ]
 
+# The patterns above all assume the target name appears textually AFTER the
+# kill verb, in the same pipe-free segment. PowerShell's idiomatic pipeline --
+# `Get-Process runwall | Stop-Process`, or its short aliases `gps ... | spps`
+# -- puts the target BEFORE the verb, separated by a `|` that `[^|;\n]*`
+# deliberately excludes, and every pattern above missed it completely:
+# `Get-Process runwall | Stop-Process` reached ALLOW with zero findings,
+# which is exactly the "no single tool call should be able to disable
+# enforcement, and no attempt should be unlogged" invariant THREAT_MODEL.md
+# states as the one thing this pack must hold. This co-occurrence check is
+# deliberately order- and separator-independent (pipe, `;`, or a stored
+# variable's `.Kill()` method call) rather than pattern-matching one more
+# literal shape, because the underlying gap is positional, not lexical.
+_KILL_VERB_ANYWHERE = re.compile(
+    r"\b(stop-process|spps|taskkill|pkill|stop-service)\b|\.kill\(\)|\bkill\s+-9\b",
+    re.IGNORECASE)
+_KILL_TARGET_ANYWHERE = re.compile(
+    r"\b(runwall|governor)\b|\bpython[0-9.]*(\.exe)?\b", re.IGNORECASE)
+
 # Launching an ungoverned harness, or one with permissions disabled. This is not
 # "an agent being naughty" -- it is the single cheapest total bypass available,
 # so it is a HALT rather than a score.
@@ -226,9 +244,10 @@ def modify_harness_config(env, policy, session) -> list[Finding]:
 
 @register("self_protect")
 def kill_governor(env, policy, session) -> list[Finding]:
+    text = env.normalized_action
     for pat in _KILL:
-        if pat.search(env.normalized_action):
-            m = pat.search(env.normalized_action)
+        m = pat.search(text)
+        if m:
             return [Finding(
                 ruleId="self_protect.kill_governor",
                 severity="critical",
@@ -237,6 +256,20 @@ def kill_governor(env, policy, session) -> list[Finding]:
                 evidence=[m.group(0)[:200]],
                 halt=True,
             )]
+    verb = _KILL_VERB_ANYWHERE.search(text)
+    target = _KILL_TARGET_ANYWHERE.search(text)
+    if verb and target:
+        return [Finding(
+            ruleId="self_protect.kill_governor",
+            severity="critical",
+            score=100,
+            message=("action attempts to terminate the governor process or service "
+                     "- kill verb and target appear in an order the sequential "
+                     "patterns above do not cover (e.g. a pipeline naming the "
+                     "target before the verb)"),
+            evidence=[verb.group(0)[:100], target.group(0)[:100]],
+            halt=True,
+        )]
     return []
 
 
