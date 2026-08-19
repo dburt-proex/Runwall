@@ -266,6 +266,38 @@ def test_kill_governor_co_occurrence_does_not_fire_on_word_kill_alone(ctx):
         assert not any(f["ruleId"] == "self_protect.kill_governor" for f in d.findings), cmd
 
 
+@pytest.mark.parametrize("cmd", [
+    "Get-ChildItem -Recurse C:\\important | Remove-Item",
+    "Get-ChildItem -Recurse -Force C:\\important | Remove-Item",
+    "Get-ChildItem -Recurse C:\\important | Where-Object {$_.Extension -eq '.log'} | Remove-Item",
+    "gci -r . | ri",
+])
+def test_recursive_delete_catches_the_discover_then_pipe_idiom(ctx, cmd):
+    """The same order/pipe-position gap as kill_governor, on the single most
+    universally destructive rule in the pack: `-Recurse` sits on
+    Get-ChildItem's side of the pipe, Remove-Item is left bare, and every
+    _RECURSIVE_DELETE pattern -- which all require -Recurse/-Force in
+    Remove-Item's OWN pipe-free segment -- missed it. -Force is not required
+    here because Get-ChildItem -Recurse already performs the recursion; the
+    subsequent Remove-Item is destructive regardless."""
+    pol, sess, per = ctx
+    d = decide(envelope("Bash", {"command": cmd}), pol, sess, per, operator_present=True)
+    assert d.route == HALT, (cmd, d.route)
+    assert any(f["ruleId"] == "destructive.recursive_delete" for f in d.findings)
+
+
+def test_recursive_delete_co_occurrence_does_not_fire_on_recursive_reads(ctx):
+    """The discover-then-delete check must still require an actual deletion
+    verb -- not just -Recurse anywhere near an unrelated read/filter pipeline,
+    and not across an unrelated `;`-separated statement."""
+    pol, sess, per = ctx
+    for cmd in ("Get-ChildItem -Recurse src\\ | Select-String TODO",
+                "gci -recurse | measure-object",
+                "Copy-Item -Recurse -Force X Y; Remove-Item tempfile.txt"):
+        d = decide(envelope("Bash", {"command": cmd}), pol, sess, per, operator_present=True)
+        assert not any(f["ruleId"] == "destructive.recursive_delete" for f in d.findings), cmd
+
+
 def test_read_tool_on_a_protected_file_is_caught(ctx):
     """Previously only Bash and write tools were inspected, so a plain Read of
     the ledger slipped past this rule entirely."""

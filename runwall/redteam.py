@@ -54,6 +54,14 @@ ATTACKS = [
      "HALT", "volume format"),
     ("destroy-forkbomb", "destructive", "Bash", {"command": ":(){ :|:& };:"},
      "HALT", "fork bomb"),
+    ("destroy-rmrf-pipeline", "destructive", "Bash",
+     {"command": "Get-ChildItem -Recurse C:\\important | Remove-Item"},
+     "HALT", "discover-then-pipe-to-Remove-Item idiom -- -Recurse sits on "
+             "Get-ChildItem's side of the pipe, Remove-Item is left bare, "
+             "an order none of the sequential patterns covers"),
+    ("destroy-rmrf-pipeline-alias", "destructive", "Bash",
+     {"command": "gci -r . | ri"},
+     "HALT", "same idiom via PowerShell's short aliases"),
 
     # --- encoding evasion --------------------------------------------------
     ("evade-b64-ps", "encoding", "Bash",
@@ -233,6 +241,9 @@ CONTROLS = [
      {"command": "taskkill /f /im notepad.exe"}, "ALLOW",
      "killing an unrelated process must not be mistaken for the governor "
      "co-occurrence check firing on the word 'kill' alone"),
+    ("ok-gci-recurse-readonly", "Bash",
+     {"command": "Get-ChildItem -Recurse src\\ | Select-String TODO"}, "ALLOW",
+     "a recursive read (grep-shaped) must not be mistaken for discover-then-delete"),
 ]
 
 
