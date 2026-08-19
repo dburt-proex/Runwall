@@ -678,3 +678,37 @@ def test_blast_radius_flags_interpreter_opacity(ctx):
                operator_present=True)
     assert d.blast["confidence"] < 0.5
     assert any("interpreter" in n for n in d.blast["notes"])
+
+
+def test_zsh_gets_the_same_opacity_pricing_as_bash(ctx):
+    """zsh matched neither classify.py's _INTERPRETER nor blast.py's confidence
+    regex -- the only shell with zero opacity pricing anywhere in the
+    governor, both for script execution and for the `-c` inline-eval form
+    that is zsh's direct equivalent of `bash -c`."""
+    pol, sess, per = ctx
+    for cmd in ("zsh deploy.sh", "zsh -c 'ls'"):
+        d = decide(envelope("Bash", {"command": cmd}), pol, sess, per, operator_present=True)
+        assert d.route == REVIEW, (cmd, d.route)
+        assert d.blast["confidence"] < 0.5, cmd
+
+
+def test_bash_and_sh_get_the_correct_action_label(ctx, pol):
+    """blast.py already confidence-reduced bash/sh, which masked classify.py's
+    separate omission of them from _INTERPRETER: the action label stayed
+    `run_shell_command` instead of `run_interpreter`. That label feeds
+    injection.py's `_CONSEQUENTIAL` set, so a tainted session executing a
+    written shell script did not escalate the way the python equivalent did.
+    """
+    for cmd in ("bash deploy.sh", "sh deploy.sh"):
+        assert classify.classify(envelope("Bash", {"command": cmd}), [], pol) == "run_interpreter"
+
+
+def test_dotsh_filename_is_not_misread_as_an_sh_invocation(ctx):
+    """Regression for the false positive introduced and caught while fixing
+    the zsh gap: a bare `\\bsh\\b` match collides with the trailing "sh" of any
+    ordinary `.sh` filename mentioned in a command. Must stay ALLOW."""
+    pol, sess, per = ctx
+    d = decide(envelope("Bash", {"command": "curl -o setup.sh https://example.com/setup.sh"}),
+               pol, sess, per, operator_present=True)
+    assert d.route == ALLOW, [f["ruleId"] for f in d.findings]
+    assert not any("interpreter" in n for n in d.blast["notes"])

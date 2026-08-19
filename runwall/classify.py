@@ -68,11 +68,27 @@ _FROM_RULE = {
 }
 
 _INTERPRETER = re.compile(
-    r"\b(python[0-9.]*|py|node|deno|bun|ruby|perl|php|pwsh|powershell|uv|npx)\b[^|;\n]*"
+    # bash/zsh were absent here even though blast.py separately treats bash
+    # (but never zsh) as opaque -- the two lists had drifted apart. zsh matched
+    # neither, so `zsh script.sh` / `zsh -c '...'` got no opacity pricing at
+    # all: not REVIEW-gated here, and not confidence-reduced in blast.py
+    # either. Kept in sync with docs/UNINSTRUMENTED_PATHS.md and
+    # THREAT_MODEL.md, which already cite `wsl bash -c` as covered.
+    r"\b(python[0-9.]*|py|node|deno|bun|ruby|perl|php|pwsh|powershell|uv|npx|"
+    r"bash|zsh)\b[^|;\n]*"
     # -c / -e / --eval, a script file, or -m <module>. `python -m pytest` runs
     # arbitrary code exactly as much as `python -c` does; the opacity is the
     # same, so the classification should be too.
-    r"(\s-[ce]\b|\s-e\b|\s--eval\b|\s-m\s+[\w.]+|\s\S+\.(py|js|mjs|ts|rb|pl|php|ps1))")
+    r"(\s-[ce]\b|\s-e\b|\s--eval\b|\s-m\s+[\w.]+|\s\S+\.(py|js|mjs|ts|rb|pl|php|ps1|sh))")
+
+# Bare `sh` gets its own pattern rather than joining the alternation above:
+# unqualified word-boundary matching on a bare two-letter token collides with
+# the trailing "sh" of any ordinary `.sh` filename mentioned in the command
+# (`curl -o setup.sh https://x/setup.sh` matched `\bsh\b` on the extension and
+# would have been misclassified as an interpreter invocation on an otherwise
+# ordinary download). The dot-lookbehind excludes exactly that collision while
+# still matching `sh -c`, `/bin/sh script.sh`, and `wsl sh -c` normally.
+_SH_INTERPRETER = re.compile(r"(?<!\.)\bsh\b[^|;\n]*(\s-[ce]\b|\s--eval\b|\s\S+\.sh\b)")
 _INSTALL = re.compile(
     r"\b(pip[0-9.]*\s+install|npm\s+(i|install|ci)\b|pnpm\s+add|yarn\s+add|"
     r"uv\s+(pip\s+)?(install|add)|cargo\s+(add|install)|go\s+get|gem\s+install|"
@@ -123,7 +139,7 @@ def classify(env, findings, policy) -> str:
             return "send_external_message"
         if _INSTALL.search(text):
             return "install_dependency"
-        if _INTERPRETER.search(text):
+        if _INTERPRETER.search(text) or _SH_INTERPRETER.search(text):
             # Effects happen inside a process we never see. Labelled distinctly
             # so policy can price that opacity rather than treating it as an
             # ordinary shell command.

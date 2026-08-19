@@ -55,7 +55,7 @@ runwall hook-install           # register the PreToolUse hook (backs up settings
 Prove it works:
 
 ```bash
-runwall redteam                # 59-case adversarial corpus against the live governor
+runwall redteam                # 62-case adversarial corpus against the live governor
 runwall verify                 # walk the hash chain
 runwall claims-audit           # fail the build on overclaiming language
 ```
@@ -154,7 +154,7 @@ never looks like "governor said yes."
 | Self-protection | policy, ledger, keys, hook config, governor process — HALT, always, even while disarmed |
 | Wall silently down | liveness canary; a missing denial is itself a ledger event |
 
-Verified by `runwall redteam`: **45 attacks refused, 14 ordinary development
+Verified by `runwall redteam`: **47 attacks refused, 15 ordinary development
 actions unobstructed.** The controls matter as much as the attacks — a wall that
 refuses everything is trivially "unbreakable" and useless, and would be
 uninstalled within a day.
@@ -255,7 +255,7 @@ means the same thing in both tools and a reviewer learns one vocabulary.
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 69 tests
+python -m pytest tests/ -q      # 72 tests
 runwall redteam --offline       # 53 cases, no daemon required
 ```
 
