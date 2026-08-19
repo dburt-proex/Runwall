@@ -128,8 +128,11 @@ def instruction_in_written_content(env, policy, session) -> list[Finding]:
     """
     if env.tool not in ("Write", "Edit", "MultiEdit", "NotebookEdit"):
         return []
+    # "new_source" is NotebookEdit's content field (its equivalent of Edit's
+    # "new_string") -- omitted here independently made this rule blind to
+    # planted instructions written through NotebookEdit specifically.
     content = " ".join(str(v) for k, v in env.raw_params.items()
-                       if k in ("content", "new_string") and isinstance(v, str))
+                       if k in ("content", "new_string", "new_source") and isinstance(v, str))
     m = _INJECTION_MARKER.search(content)
     if not m:
         return []
