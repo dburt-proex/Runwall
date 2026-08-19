@@ -255,7 +255,7 @@ means the same thing in both tools and a reviewer learns one vocabulary.
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 72 tests
+python -m pytest tests/ -q      # 79 tests
 runwall redteam --offline       # 53 cases, no daemon required
 ```
 

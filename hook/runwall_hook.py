@@ -68,11 +68,24 @@ _FALLBACK = [(re.compile(p, re.IGNORECASE), why) for p, why in FALLBACK_DENY]
 READ_TOOLS = {"Read", "NotebookRead", "Grep", "Glob", "TodoRead", "TodoWrite"}
 WRITE_TOOLS = {"Write", "Edit", "MultiEdit", "NotebookEdit"}
 
-# Mirrors envelope._ACTION_PARAMS / _CONTENT_PARAMS. Duplicated deliberately:
-# this file must keep working when the runwall package is missing or broken.
-ACTION_KEYS = {"command", "url", "query", "pattern", "file_path", "path",
-               "notebook_path", "cwd"}
-CONTENT_KEYS = {"content", "new_string", "prompt"}
+# Mirrors envelope._CONTENT_PARAMS. Duplicated deliberately: this file must
+# keep working when the runwall package is missing or broken.
+#
+# There is deliberately no ACTION_KEYS allowlist here -- an earlier version
+# scanned "recognized action keys, and only if none of those were present,
+# everything else," which meant a single populated action-shaped field (even
+# an empty-ish one like `cwd: "."`) silently exempted every OTHER, unlisted
+# parameter from the scan. A payload shaped like an unknown tool call with its
+# real command text under an unlisted key (a custom MCP tool's `script` field,
+# say) bypassed FALLBACK_DENY entirely. Scanning every string param except the
+# known content-shaped ones closes that: an unrecognized key is treated as
+# action text by default, which is the fail-closed direction to be wrong in.
+#
+# "new_source" is NotebookEdit's content field (its equivalent of Edit's
+# "new_string") -- excluded here for the same reason "content"/"new_string"
+# are, so DEGRADED mode doesn't start refusing ordinary notebook edits that
+# happen to mention a dangerous-looking string in a comment or docstring.
+CONTENT_KEYS = {"content", "new_string", "new_source", "prompt"}
 
 _READ_VERB = re.compile(
     r"(?:^|[|;&]\s*)\s*(cat|tail|head|less|more|wc|nl|type|get-content|gc|grep|"
@@ -153,11 +166,19 @@ def fallback(payload: dict, why_unreachable: str) -> None:
     # merely mentions `.env` or a policy path was refused as though it were an
     # attack on those paths -- which made security documentation unwritable while
     # the wall was armed. Content is data; the command is the action.
+    #
+    # Recognized action keys plus any *unrecognized* key are scanned together,
+    # unconditionally -- not "recognized action keys, and only if none of those
+    # were present, everything else." The conditional form meant a single
+    # populated ACTION_KEYS field (even an empty-ish one like `cwd: "."`)
+    # silently exempted every other unrecognized parameter from the scan, so a
+    # payload shaped like an unknown tool call with its real command text under
+    # an unlisted key (e.g. a custom MCP tool's `script` field) bypassed
+    # FALLBACK_DENY entirely -- downgrading an unconditional refusal to a mere
+    # confirmation prompt during exactly the moment (governor unreachable) this
+    # file exists to stay strict through.
     action = " ".join(str(v) for k, v in params.items()
-                      if k in ACTION_KEYS and isinstance(v, str))
-    if not action:
-        action = " ".join(str(v) for k, v in params.items()
-                          if k not in CONTENT_KEYS and isinstance(v, str))
+                      if k not in CONTENT_KEYS and isinstance(v, str))
     text = _decode(action)
 
     for pat, why in _FALLBACK:
