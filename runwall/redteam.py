@@ -257,6 +257,17 @@ CONTROLS = [
     ("ok-find-exec-grep", "Bash",
      {"command": r"find . -name '*.py' -exec grep -l TODO {} \;"}, "ALLOW",
      "find -exec running a read-only command must not be mistaken for -exec rm"),
+    ("ok-unrelated-kill-and-python", "Bash",
+     {"command": "python build.py; taskkill /F /IM notepad.exe"}, "REVIEW",
+     "an unrelated python run and an unrelated process kill in separate "
+     "statements must not co-occur into a governor-kill HALT"),
+    ("ok-read-pipe-then-unrelated-delete", "Bash",
+     {"command": "Get-ChildItem -Recurse src | Select-String TODO && Remove-Item temp.txt"},
+     "REVIEW", "a read-only recursive search chained with an unrelated "
+               "single-file delete must not co-occur into a recursive-delete HALT"),
+    ("ok-find-name-delete-substring", "Bash",
+     {"command": "find . -name '*-delete*'"}, "ALLOW",
+     "'-delete' appearing inside a quoted search pattern is not the -delete flag"),
 ]
 
 

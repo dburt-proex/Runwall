@@ -266,6 +266,24 @@ def test_kill_governor_co_occurrence_does_not_fire_on_word_kill_alone(ctx):
         assert not any(f["ruleId"] == "self_protect.kill_governor" for f in d.findings), cmd
 
 
+def test_kill_governor_requires_verb_and_target_in_the_same_statement(ctx):
+    """Regression for a false positive an independent review caught after the
+    co-occurrence check shipped: it originally searched the whole command, so
+    an unrelated python invocation and an unrelated process kill in separate
+    `;`-joined statements co-occurred into a HALT. Scoping to one statement
+    fixes it while `(Get-Process runwall).Kill()` -- verb and target in the
+    SAME statement -- must still fire."""
+    pol, sess, per = ctx
+    d = decide(envelope("Bash", {"command": "python build.py; taskkill /F /IM notepad.exe"}),
+               pol, sess, per, operator_present=True)
+    assert not any(f["ruleId"] == "self_protect.kill_governor" for f in d.findings)
+
+    d = decide(envelope("Bash", {"command": "(Get-Process runwall).Kill()"}),
+               pol, sess, per, operator_present=True)
+    assert d.route == HALT
+    assert any(f["ruleId"] == "self_protect.kill_governor" for f in d.findings)
+
+
 @pytest.mark.parametrize("cmd", [
     "Get-ChildItem -Recurse C:\\important | Remove-Item",
     "Get-ChildItem -Recurse -Force C:\\important | Remove-Item",
@@ -294,6 +312,31 @@ def test_recursive_delete_co_occurrence_does_not_fire_on_recursive_reads(ctx):
     for cmd in ("Get-ChildItem -Recurse src\\ | Select-String TODO",
                 "gci -recurse | measure-object",
                 "Copy-Item -Recurse -Force X Y; Remove-Item tempfile.txt"):
+        d = decide(envelope("Bash", {"command": cmd}), pol, sess, per, operator_present=True)
+        assert not any(f["ruleId"] == "destructive.recursive_delete" for f in d.findings), cmd
+
+
+def test_recursive_delete_statement_split_covers_and_and_or(ctx):
+    """Regression for a false positive an independent review caught: the
+    statement split originally covered only `;`/newline, so `Get-ChildItem
+    -Recurse src | Select-String TODO && Remove-Item temp.txt` -- a read-only
+    search chained with an unrelated single-file delete -- stayed one
+    un-split segment and co-occurred into a false HALT. `&&`/`||` are
+    statement separators exactly like `;` for this check and are split on."""
+    pol, sess, per = ctx
+    d = decide(envelope("Bash", {
+        "command": "Get-ChildItem -Recurse src | Select-String TODO && Remove-Item temp.txt"}),
+        pol, sess, per, operator_present=True)
+    assert not any(f["ruleId"] == "destructive.recursive_delete" for f in d.findings)
+
+
+def test_find_delete_flag_not_a_substring_match(ctx):
+    """Regression for a false positive an independent review caught: a bare
+    `-delete\\b` also matched "-delete" as a substring inside an unrelated
+    quoted argument, HALTing an ordinary filename search that never used the
+    flag."""
+    pol, sess, per = ctx
+    for cmd in ("find . -name '*-delete*'", "find . -iname 'needs-delete'"):
         d = decide(envelope("Bash", {"command": cmd}), pol, sess, per, operator_present=True)
         assert not any(f["ruleId"] == "destructive.recursive_delete" for f in d.findings), cmd
 

@@ -38,7 +38,13 @@ _RECURSIVE_DELETE = [
     # the three `rm` patterns above to catch. `find X -delete` in particular
     # reached full ALLOW with zero findings before this fix: no `rm` token to
     # match against at all.
-    re.compile(r"\bfind\b[^|;\n]*-delete\b"),
+    #
+    # `(?<!\S)` requires whitespace (or statement start) immediately before
+    # the flag -- a bare `\b-delete\b` also matched "-delete" as a substring
+    # inside an unrelated quoted argument (`find . -name '*-delete*'`,
+    # `find . -iname 'needs-delete'`), HALTing an ordinary filename search
+    # that never used the flag at all.
+    re.compile(r"\bfind\b[^|;\n]*(?<!\S)-delete\b"),
     re.compile(r"\bfind\b[^|;\n]*-exec(dir)?\s+rm\b"),
     re.compile(r"\bfind\b[^|;\n]*\|\s*xargs\b[^|;\n]*\brm\b"),
 ]
@@ -52,16 +58,22 @@ _RECURSIVE_DELETE = [
 # self_protect.py's kill_governor for `Get-Process | Stop-Process`; -Force is
 # not required for the discovery side to be fully destructive here, since the
 # recursion already happened at Get-ChildItem, so it is deliberately not
-# required in this check either). Scoped to one `;`/newline-bounded statement,
-# not the whole command, so an unrelated `Copy-Item -Recurse ...; Remove-Item
-# unrelated.tmp` on the same line does not co-occur into a false positive.
+# required in this check either). Scoped to one statement, not the whole
+# command, so an unrelated `Copy-Item -Recurse ...; Remove-Item unrelated.tmp`
+# on the same line does not co-occur into a false positive. The split
+# originally covered only `;`/newline: `Get-ChildItem -Recurse src |
+# Select-String TODO && Remove-Item temp.txt` -- a read-only search chained
+# with an unrelated single-file delete -- was still one un-split segment
+# under that split, so it co-occurred into a false HALT. `&&`/`||` are
+# statement separators exactly like `;` for this purpose and are split on too.
 _DISCOVER_VERB = re.compile(r"\b(get-childitem|gci|dir|ls)\b")
 _RECURSE_FLAG = re.compile(r"-r(ecurse)?\b")
 _PIPELINE_DELETE_VERB = re.compile(r"\b(remove-item|ri)\b")
+_STATEMENT_SPLIT = re.compile(r";|\n|&&|\|\|")
 
 
 def _pipeline_discover_then_delete(text: str) -> bool:
-    for stmt in re.split(r"[;\n]", text):
+    for stmt in _STATEMENT_SPLIT.split(text):
         if (_DISCOVER_VERB.search(stmt) and _RECURSE_FLAG.search(stmt)
                 and _PIPELINE_DELETE_VERB.search(stmt)):
             return True
