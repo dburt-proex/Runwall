@@ -262,7 +262,15 @@ def canonical_path(p: str) -> str:
 # Which parameter of which tool carries the thing that actually happens. Used to
 # extract command text and target paths without the agent telling us where to
 # look.
-_TEXT_PARAMS = ("command", "content", "new_string", "prompt", "query", "url", "pattern")
+#
+# `new_source` is NotebookEdit's cell-content field -- the tool's actual
+# equivalent of Edit's `new_string`, under a different name. Omitting it here
+# does not exempt NotebookEdit from content scanning by design the way `content`
+# omission would; it silently drops the field from every derived text view,
+# because NotebookEdit always also carries `notebook_path` (a _PATH_PARAMS hit),
+# which satisfies the "some text was found" check below and so never trips the
+# unknown-tool-shape fallback that would otherwise have caught it.
+_TEXT_PARAMS = ("command", "content", "new_string", "new_source", "prompt", "query", "url", "pattern")
 _PATH_PARAMS = ("file_path", "path", "notebook_path", "cwd")
 
 # The action/content split. A shell command IS the action, so its text is what
@@ -275,7 +283,7 @@ _PATH_PARAMS = ("file_path", "path", "notebook_path", "cwd")
 # reason this split exists. False positives are security failures here, because
 # every over-block trains the operator toward disarming.
 _ACTION_PARAMS = ("command", "url", "query", "pattern")
-_CONTENT_PARAMS = ("content", "new_string", "prompt")
+_CONTENT_PARAMS = ("content", "new_string", "new_source", "prompt")
 _WRITE_TOOLS = ("Write", "Edit", "MultiEdit", "NotebookEdit")
 
 # Path-shaped tokens inside free text (a shell command names its targets in the

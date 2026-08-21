@@ -77,6 +77,37 @@ _KILL = [
     re.compile(r"\bsc\b\s+(stop|delete)\b[^|;\n]*runwall"),
 ]
 
+# The patterns above all assume the target name appears textually AFTER the
+# kill verb, in the same pipe-free segment. PowerShell's idiomatic pipeline --
+# `Get-Process runwall | Stop-Process`, or its short aliases `gps ... | spps`
+# -- puts the target BEFORE the verb, separated by a `|` that `[^|;\n]*`
+# deliberately excludes, and every pattern above missed it completely:
+# `Get-Process runwall | Stop-Process` reached ALLOW with zero findings,
+# which is exactly the "no single tool call should be able to disable
+# enforcement, and no attempt should be unlogged" invariant THREAT_MODEL.md
+# states as the one thing this pack must hold. This co-occurrence check is
+# deliberately order-independent (a pipeline can name the target before the
+# verb) rather than pattern-matching one more literal shape, because the
+# underlying gap is positional, not lexical.
+#
+# Scoped to one `;`/newline-bounded statement -- an earlier version searched
+# the whole command, so `python build.py; taskkill /F /IM notepad.exe` (an
+# unrelated build plus an unrelated kill of Notepad) co-occurred into a false
+# HALT: "python" matched the target list and "taskkill" matched the verb list,
+# with no requirement that the two relate to each other. Statement-scoping
+# still crosses pipes freely (`Get-Process runwall | Stop-Process` is one
+# statement), which is the shape this check exists to catch; it costs the
+# separate `$p = Get-Process runwall; $p.Kill()` variable-assignment form,
+# which has a same-statement equivalent -- `(Get-Process runwall).Kill()` --
+# that remains covered. See destructive.py's identical statement-scoping
+# rationale, added for the same reason on a different rule.
+_KILL_VERB_ANYWHERE = re.compile(
+    r"\b(stop-process|spps|taskkill|pkill|stop-service)\b|\.kill\(\)|\bkill\s+-9\b",
+    re.IGNORECASE)
+_KILL_TARGET_ANYWHERE = re.compile(
+    r"\b(runwall|governor)\b|\bpython[0-9.]*(\.exe)?\b", re.IGNORECASE)
+_STATEMENT_SPLIT = re.compile(r";|\n|&&|\|\|")
+
 # Launching an ungoverned harness, or one with permissions disabled. This is not
 # "an agent being naughty" -- it is the single cheapest total bypass available,
 # so it is a HALT rather than a score.
@@ -226,15 +257,31 @@ def modify_harness_config(env, policy, session) -> list[Finding]:
 
 @register("self_protect")
 def kill_governor(env, policy, session) -> list[Finding]:
+    text = env.normalized_action
     for pat in _KILL:
-        if pat.search(env.normalized_action):
-            m = pat.search(env.normalized_action)
+        m = pat.search(text)
+        if m:
             return [Finding(
                 ruleId="self_protect.kill_governor",
                 severity="critical",
                 score=100,
                 message="action attempts to terminate the governor process or service",
                 evidence=[m.group(0)[:200]],
+                halt=True,
+            )]
+    for stmt in _STATEMENT_SPLIT.split(text):
+        verb = _KILL_VERB_ANYWHERE.search(stmt)
+        target = _KILL_TARGET_ANYWHERE.search(stmt)
+        if verb and target:
+            return [Finding(
+                ruleId="self_protect.kill_governor",
+                severity="critical",
+                score=100,
+                message=("action attempts to terminate the governor process or service "
+                         "- kill verb and target appear in an order the sequential "
+                         "patterns above do not cover (e.g. a pipeline naming the "
+                         "target before the verb)"),
+                evidence=[verb.group(0)[:100], target.group(0)[:100]],
                 halt=True,
             )]
     return []
