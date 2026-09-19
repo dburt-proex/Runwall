@@ -86,6 +86,8 @@ _STORAGE = [
     (re.compile(r"\bcipher\s+/w\b"), "free-space wipe (cipher /w)"),
     (re.compile(r"\bdd\b[^|;\n]*\bof=/dev/(sd|nvme|disk)"), "raw block device write"),
     (re.compile(r">\s*/dev/(sd|nvme|disk)[a-z0-9]*\b"), "redirect to block device"),
+    (re.compile(r"\bformat-volume\b[^;\n]*-force\b", re.IGNORECASE),
+     "PowerShell volume format"),
 ]
 
 _SQL = [
@@ -94,6 +96,8 @@ _SQL = [
     # DELETE with no WHERE is a full-table delete.
     (re.compile(r"\bdelete\s+from\s+\S+(?![^;]*\bwhere\b)"), "SQL DELETE without WHERE"),
     (re.compile(r"\bupdate\s+\S+\s+set\b(?![^;]*\bwhere\b)"), "SQL UPDATE without WHERE"),
+    (re.compile(r"\b(get-content|cat|type)\b[^;\n]*\|\s*(psql|mysql|sqlcmd|sqlite3)\b", re.IGNORECASE),
+     "opaque SQL script piped to a database client"),
 ]
 
 _GIT = [
@@ -106,12 +110,16 @@ _GIT = [
     (re.compile(r"\bgit\b[^|;\n]*\bfilter-branch\b"), "git filter-branch (rewrites history)", True),
     (re.compile(r"\bgit\b[^|;\n]*\bbranch\b[^|;\n]*(-D|--delete\s+--force)"),
      "force branch delete", False),
+    (re.compile(r"\bgit\b[^|;\n]*\bupdate-ref\b[^|;\n]*\s-d\b"),
+     "git update-ref -d (deletes a ref)", True),
 ]
 
 _PERMS = [
     (re.compile(r"\bchmod\s+(-[a-z]+\s+)*777\b"), "chmod 777 (world-writable)"),
     (re.compile(r"icacls\b[^|;\n]*/grant\b[^|;\n]*(everyone|users):\s*\(?f\)?"),
      "grant Everyone full control"),
+    (re.compile(r"icacls\b[^|;\n]*/grant\b[^|;\n]*\*s-1-1-0:\s*\(?f\)?", re.IGNORECASE),
+     "grant Everyone SID full control"),
     (re.compile(r"\bchown\s+-r\b[^|;\n]*\broot\b"), "recursive chown to root"),
 ]
 
