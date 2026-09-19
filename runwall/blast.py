@@ -40,18 +40,6 @@ _FINANCIAL_HINT = re.compile(
     r"routing[_-]?number|card[_-]?number)\b", re.IGNORECASE)
 _URL = re.compile(r"https?://([a-z0-9.-]+)", re.IGNORECASE)
 _FANOUT = re.compile(r"\b(for|foreach|while|xargs|parallel|-r\b|--recursive|\*\*|\*\.)")
-_INTERPRETER_HINT = re.compile(
-    r"\b(python|node|deno|ruby|perl|pwsh|powershell|bash|zsh|uv|npx)\b\s+"
-    r"(-[ce]\b|\S+\.(py|js|ts|rb|ps1|sh))")
-# Bare `sh` needs the same dot-lookbehind as classify.py._SH_INTERPRETER: an
-# unqualified `\bsh\b` collides with the trailing "sh" of any ordinary `.sh`
-# filename mentioned in the command (`curl -o setup.sh https://x/setup.sh`
-# matched this pattern on the extension alone and had its confidence
-# needlessly docked -- an over-block, since the codebase's own standard is
-# that false positives here are a security failure, not a safe default).
-_SH_INTERPRETER_HINT = re.compile(r"(?<!\.)\bsh\b\s+(-[ce]\b|\S+\.sh\b)")
-
-
 @dataclass
 class BlastRadius:
     scope: str = "local"
