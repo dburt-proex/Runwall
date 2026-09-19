@@ -54,6 +54,8 @@ _RAW_SOCKET = re.compile(
 _TUNNEL = re.compile(
     r"(ngrok|cloudflared|localtunnel|serveo|localhost\.run|bore\.pub|"
     r"ssh\s+-R\s|\bsocat\b)", re.IGNORECASE)
+_DYNAMIC_DESTINATION = re.compile(
+    r"\b(get-content|cat|type)\b[^\n]*\|[^\n]*\b(curl|wget|invoke-webrequest|invoke-restmethod)\b[^\n]*(\$_|%[a-z]|\$[a-z_]+)", re.IGNORECASE)
 
 
 def _hosts(text: str) -> list[str]:
@@ -132,6 +134,17 @@ def proxy_evasion(env, policy, session) -> list[Finding]:
                 halt=True,
             ))
     return out
+
+
+@register("egress")
+def dynamic_destination(env, policy, session) -> list[Finding]:
+    m = _DYNAMIC_DESTINATION.search(env.normalized_action)
+    if not m:
+        return []
+    return [Finding(
+        ruleId="egress.dynamic_destination", severity="critical", score=100,
+        message="network destination is supplied by pipeline data, not policy-verifiable",
+        evidence=[m.group(0)[:120]], halt=True)]
 
 
 @register("egress")

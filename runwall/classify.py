@@ -15,6 +15,7 @@ policy that reads as coverage is its own hazard.
 from __future__ import annotations
 
 import re
+from .interpreters import is_interpreter_invocation
 
 ACTIONS = frozenset({
     # read
@@ -139,7 +140,7 @@ def classify(env, findings, policy) -> str:
             return "send_external_message"
         if _INSTALL.search(text):
             return "install_dependency"
-        if _INTERPRETER.search(text) or _SH_INTERPRETER.search(text):
+        if is_interpreter_invocation(text):
             # Effects happen inside a process we never see. Labelled distinctly
             # so policy can price that opacity rather than treating it as an
             # ordinary shell command.

@@ -46,6 +46,9 @@ _ENCODE_THEN_SEND = re.compile(
 _HISTORY_WIPE = re.compile(
     r"(history\s+-c|clear-history|remove-item[^|;\n]*consolehost_history|"
     r"wevtutil\s+cl|clear-eventlog|>\s*~?/?\.bash_history)", re.IGNORECASE)
+_DISCOVER_THEN_SEND = re.compile(
+    r"\b(dir|get-childitem|find)\b[^\n]*\b(env|credential|secret|token)\b[^\n]*"
+    r"\b(curl|wget|invoke-webrequest|invoke-restmethod)\b", re.IGNORECASE)
 
 
 @register("secrets")
@@ -79,6 +82,8 @@ def exfiltration(env, policy, session) -> list[Finding]:
         carriers.append("credential file")
     if _SECRET_LITERAL.search(env.normalized_action):
         carriers.append("literal credential")
+    if _DISCOVER_THEN_SEND.search(env.normalized_action):
+        carriers.append("dynamically discovered credential material")
     if not carriers:
         return []
 

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import asdict, dataclass, field
+from .interpreters import is_interpreter_invocation
 
 SCOPES = ("local", "repo", "machine", "network", "external")
 REVERSIBILITY = ("trivial", "recoverable", "irreversible")
@@ -144,7 +145,7 @@ def compute(env, policy, findings) -> BlastRadius:
         confidence -= 0.20
     # zsh was missing here and from classify.py's _INTERPRETER alike -- the
     # only shell with zero opacity pricing anywhere in the governor.
-    if _INTERPRETER_HINT.search(text) or _SH_INTERPRETER_HINT.search(text):
+    if is_interpreter_invocation(text):
         confidence -= 0.30
         b.notes.append("interpreter invocation - effects occur inside a process "
                        "Runwall does not observe")
