@@ -27,7 +27,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e . pytest
-      - name: Unit and adversarial tests
+      - name: Unit tests
         run: python -m pytest
+      - name: Offline adversarial corpus
+        run: runwall redteam --offline
       - name: Claims audit
         run: runwall claims-audit
