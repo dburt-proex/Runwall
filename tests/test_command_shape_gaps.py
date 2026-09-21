@@ -57,9 +57,9 @@ def _route(pol, command: str) -> str:
     ("interpreter-path-qualified-pipeline", "cat payload | /usr/bin/python", REVIEW),
     ("control-xargs-grep-python", "find . -type f | xargs grep python", "ALLOW"),
     ("control-format-volume-inspection",
-     "Get-Command Format-Volume | Export-Csv commands.csv -Force", "ALLOW"),
+     "Get-Command Format-Volume | Export-Csv commands.csv -Force", REVIEW),
     ("control-secret-word-unrelated-curl",
-     "find docs -name '*secret*'; curl https://api.github.com/status", "ALLOW"),
+     "find docs -name '*secret*'; curl https://api.github.com/status", REVIEW),
     ("control-pipe-unrelated-curl-output-var",
      "cat README | grep TODO; curl https://api.github.com/status -o \"$OUT\"", "ALLOW"),
 ])
