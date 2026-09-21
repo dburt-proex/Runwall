@@ -32,6 +32,7 @@ Runwall is the runtime enforcement layer for
 | Security scope | instrumented tool-call chokepoints; known bypass surfaces are explicitly published |
 | Residual risk | maintained in [UNINSTRUMENTED_PATHS.md](docs/UNINSTRUMENTED_PATHS.md) and [THREAT_MODEL.md](docs/THREAT_MODEL.md) |
 | Release boundary | [RELEASE_PILOT_GATE.md](docs/RELEASE_PILOT_GATE.md) keeps production/pilot authorization separate from test success |
+| Public-readiness receipt | [PUBLIC_READINESS_EVIDENCE_V0_2.md](docs/PUBLIC_READINESS_EVIDENCE_V0_2.md) binds the current claims to CI and the remediation history |
 
 The strongest proof in this repository is not a security slogan. It is the
 combination of executable attack fixtures, paired false-positive controls,
