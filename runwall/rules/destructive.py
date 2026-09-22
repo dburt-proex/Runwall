@@ -86,7 +86,7 @@ _STORAGE = [
     (re.compile(r"\bcipher\s+/w\b"), "free-space wipe (cipher /w)"),
     (re.compile(r"\bdd\b[^|;\n]*\bof=/dev/(sd|nvme|disk)"), "raw block device write"),
     (re.compile(r">\s*/dev/(sd|nvme|disk)[a-z0-9]*\b"), "redirect to block device"),
-    (re.compile(r"\bformat-volume\b[^;\n]*-force\b", re.IGNORECASE),
+    (re.compile(r"\bformat-volume\b[^|;\n]*-force\b", re.IGNORECASE),
      "PowerShell volume format"),
 ]
 

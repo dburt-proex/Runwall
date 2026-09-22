@@ -1,16 +1,42 @@
 # Runwall
 
-**Runtime governance for agentic execution.**
+**Deterministic runtime governance for agentic execution.**
+
+[![Runwall CI](https://github.com/dburt-proex/Runwall/actions/workflows/ci.yml/badge.svg)](https://github.com/dburt-proex/Runwall/actions/workflows/ci.yml)
 
 > Diffwall guards what gets written. Runwall guards what gets done.
 
-Runwall is a policy enforcement point for AI agent tool calls. Before an agent
-does anything through an instrumented path, a deterministic decision is made
-out-of-process, recorded in a hash-chained ledger, and — when it matters — put
-in front of a human.
+Runwall is a policy enforcement point for AI agent tool calls. Before a mediated
+action executes, an out-of-process deterministic governor normalizes the request,
+applies policy and runtime state, estimates blast radius, and routes it to
+**ALLOW**, **REVIEW**, or **HALT**. Every decision is written to a tamper-evident,
+hash-chained ledger.
 
-It is the runtime that makes [CASA](../../OneDrive/Documents/GitHub/Claude-Cowork/00_DREW_AI_OPERATING_HQ/02_ACTIVE_SYSTEMS/CASA.md)
-enforceable rather than documented.
+**Current posture:** bounded pilot candidate / `REVIEW`. The repository has
+multi-version CI and adversarial validation, but it does **not** claim production
+containment, universal coverage, certification, or customer-field validation.
+
+Runwall is the runtime enforcement layer for
+[CASA](https://github.com/dburt-proex/casa) and shares governance vocabulary with
+[Diffwall](https://github.com/dburt-proex/diffwall).
+
+## Evidence at a glance
+
+| Signal | Verified repository evidence |
+|---|---|
+| Supported Python | CI on 3.11, 3.12, and 3.13 |
+| Unit/regression suite | **115 passed, 1 optional integration skip** |
+| Adversarial corpus | **88/88 passed — 63 attack cases refused, 25 controls routed exactly as expected** |
+| Claim discipline | `runwall claims-audit` passes in CI |
+| Decision integrity | hash-chained ledger, anchor verification, redaction before write |
+| Security scope | instrumented tool-call chokepoints; known bypass surfaces are explicitly published |
+| Residual risk | maintained in [UNINSTRUMENTED_PATHS.md](docs/UNINSTRUMENTED_PATHS.md) and [THREAT_MODEL.md](docs/THREAT_MODEL.md) |
+| Release boundary | [RELEASE_PILOT_GATE.md](docs/RELEASE_PILOT_GATE.md) keeps production/pilot authorization separate from test success |
+| Public-readiness receipt | [PUBLIC_READINESS_EVIDENCE_V0_2.md](docs/PUBLIC_READINESS_EVIDENCE_V0_2.md) binds the current claims to CI and the remediation history |
+
+The strongest proof in this repository is not a security slogan. It is the
+combination of executable attack fixtures, paired false-positive controls,
+multi-version CI, explicit claim boundaries, and published residual risk.
 
 ---
 
@@ -55,7 +81,7 @@ runwall hook-install           # register the PreToolUse hook (backs up settings
 Prove it works:
 
 ```bash
-runwall redteam                # 75-case adversarial corpus against the live governor
+runwall redteam                # 88-case attack + control corpus against the live governor
 runwall verify                 # walk the hash chain
 runwall claims-audit           # fail the build on overclaiming language
 ```
@@ -102,7 +128,7 @@ denial fingerprint and escalates instead of getting a fresh roll.
 ```
 ARMED      full mediation
 DEGRADED   governor unreachable → cached signed policy, reduced rule set.
-           Destructive / credential / egress / self-protection still DENY;
+           destructive / credential / egress / self-protection paths still refuse;
            read-class proceeds and spools behind an explicit gap marker
 SAFE       policy hash mismatch, ledger unwritable, disk pressure → read-only
 DISARMED   TOTP + typed reason · scoped to one project · time-boxed ·
@@ -154,10 +180,10 @@ never looks like "governor said yes."
 | Self-protection | policy, ledger, keys, hook config, governor process — HALT, always, even while disarmed |
 | Wall silently down | liveness canary; a missing denial is itself a ledger event |
 
-Verified by `runwall redteam`: **54 attacks refused, 21 ordinary development
-actions unobstructed.** The controls matter as much as the attacks — a wall that
-refuses everything is trivially "unbreakable" and useless, and would be
-uninstalled within a day.
+Verified by `runwall redteam --offline`: **63 attack cases refused and 25
+control cases routed exactly as expected (88/88 total).** Controls are exact-route
+tests, not decorative happy paths: ordinary work that becomes stricter than its
+declared route fails the corpus just as an attack that becomes weaker does.
 
 ---
 
@@ -215,7 +241,7 @@ DaxxerOS Local  the record store and audit substrate
 Agent-Ops       orchestration, HITL-gated
 ```
 
-Runwall reuses Diffwall's `Route` / `Finding` / `Rule` contracts and its exact
+Runwall reuses [Diffwall](https://github.com/dburt-proex/diffwall)'s `Route` / `Finding` / `Rule` contracts and its exact
 additive scoring (`min(100, Σ)`, thresholds `{review:40, halt:75}`), so a score
 means the same thing in both tools and a reviewer learns one vocabulary.
 
@@ -255,10 +281,16 @@ means the same thing in both tools and a reviewer learns one vocabulary.
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 98 tests
-runwall redteam --offline       # 53 cases, no daemon required
+python -m pytest tests/ -q      # 115 passed, 1 optional integration skip in CI
+runwall redteam --offline       # 88/88 cases, no daemon required
+runwall claims-audit            # public-claim boundary enforced in CI
 ```
 
-The suite emphasises properties that must hold under attack: fail-closed
-behaviour, tamper detection, refusal of agent-supplied action labels, and
-normalization that cannot be walked around.
+The suite emphasizes both security and usability properties: fail-closed
+behavior on mediated paths, tamper detection, refusal of agent-supplied action
+labels, normalization and command-shape regressions, and control cases that
+prevent ordinary development work from silently becoming over-blocked.
+
+For the security boundary, read [CLAIMS.md](docs/CLAIMS.md),
+[THREAT_MODEL.md](docs/THREAT_MODEL.md), and
+[UNINSTRUMENTED_PATHS.md](docs/UNINSTRUMENTED_PATHS.md) together.

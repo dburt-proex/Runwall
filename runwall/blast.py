@@ -159,7 +159,12 @@ def floor_route(b: BlastRadius) -> str:
     if b.scope == "external" and b.reversibility == "irreversible":
         return "REVIEW"
     if "secrets" in b.data_classes and b.scope in ("network", "external"):
-        return "HALT"
+        # Blast data classes are intentionally coarse evidence. A secret-looking
+        # term somewhere in a multi-statement command plus a network destination
+        # is enough to require human review, but not enough to prove exfiltration.
+        # Explicit secret-to-outbound dataflow is still HALTed by
+        # rules/secrets_exfil.py before this floor is applied.
+        return "REVIEW"
     if b.propagation == "fan_out" and b.reversibility == "irreversible":
         return "REVIEW"
     return "ALLOW"

@@ -47,8 +47,19 @@ _HISTORY_WIPE = re.compile(
     r"(history\s+-c|clear-history|remove-item[^|;\n]*consolehost_history|"
     r"wevtutil\s+cl|clear-eventlog|>\s*~?/?\.bash_history)", re.IGNORECASE)
 _DISCOVER_THEN_SEND = re.compile(
-    r"\b(dir|get-childitem|find)\b[^\n]*\b(env|credential|secret|token)\b[^\n]*"
-    r"\b(curl|wget|invoke-webrequest|invoke-restmethod)\b", re.IGNORECASE)
+    # Discovery alone is not exfiltration. Require a pipeline in the same
+    # statement and require the discovered value to occupy an outbound payload
+    # position rather than merely co-occurring with a later request.
+    r"\b(dir|get-childitem|find)\b"
+    r"(?=[^;&\n]*\b(env|credential|secret|token)\b)(?=[^;&\n]*\|)"
+    r"[^;&\n]*(?:"
+    r"\b(curl|wget)\b[^;&\n]*(?:-d|--data(?:-binary)?|-f|--form)\s+"
+    r"@?(?:%[a-z]|\$_|\$[a-z_][a-z0-9_]*)"
+    r"|\b(invoke-webrequest|invoke-restmethod)\b[^;&\n]*"
+    r"-(?:body|infile)\s+(?:%[a-z]|\$_|\$[a-z_][a-z0-9_]*)"
+    r")",
+    re.IGNORECASE,
+)
 
 
 @register("secrets")

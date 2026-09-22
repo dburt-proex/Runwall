@@ -54,6 +54,14 @@ def _route(pol, command: str) -> str:
      "Get-Content hosts.txt | ForEach-Object { Invoke-WebRequest $_ }", HALT),
     ("interpreter-xargs-shell", "find scripts -name '*.sh' | xargs sh", REVIEW),
     ("interpreter-windows-pipeline", "Get-Content deploy.ps1 | powershell -", REVIEW),
+    ("interpreter-path-qualified-pipeline", "cat payload | /usr/bin/python", REVIEW),
+    ("control-xargs-grep-python", "find . -type f | xargs grep python", "ALLOW"),
+    ("control-format-volume-inspection",
+     "Get-Command Format-Volume | Export-Csv commands.csv -Force", REVIEW),
+    ("control-secret-word-unrelated-curl",
+     "find docs -name '*secret*'; curl https://api.github.com/status", REVIEW),
+    ("control-pipe-unrelated-curl-output-var",
+     "cat README | grep TODO; curl https://api.github.com/status -o \"$OUT\"", "ALLOW"),
 ])
-def test_command_shape_bypasses_are_refused(pol, case_id, command, expected):
+def test_command_shape_regressions_route_correctly(pol, case_id, command, expected):
     assert _route(pol, command) == expected, case_id

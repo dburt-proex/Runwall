@@ -54,8 +54,19 @@ _RAW_SOCKET = re.compile(
 _TUNNEL = re.compile(
     r"(ngrok|cloudflared|localtunnel|serveo|localhost\.run|bore\.pub|"
     r"ssh\s+-R\s|\bsocat\b)", re.IGNORECASE)
-_DYNAMIC_DESTINATION = re.compile(
-    r"\b(get-content|cat|type)\b[^\n]*\|[^\n]*\b(curl|wget|invoke-webrequest|invoke-restmethod)\b[^\n]*(\$_|%[a-z]|\$[a-z_]+)", re.IGNORECASE)
+_DYNAMIC_SOURCE = re.compile(
+    r"\b(get-content|cat|type)\b[^;&\n]*\|", re.IGNORECASE
+)
+_DYNAMIC_URI = re.compile(
+    r"(?:"
+    r"\b(curl|wget)\b\s+[\"']?(\$_|%[a-z]|\$[a-z_][a-z0-9_]*)[\"']?"
+    r"|\b(invoke-webrequest|invoke-restmethod)\b\s+(?:-uri\s+)?"
+    r"[\"']?(\$_|%[a-z]|\$[a-z_][a-z0-9_]*)[\"']?"
+    r"|\b(invoke-webrequest|invoke-restmethod)\b[^;&\n]*\s-uri\s+"
+    r"[\"']?(\$_|%[a-z]|\$[a-z_][a-z0-9_]*)[\"']?"
+    r")",
+    re.IGNORECASE,
+)
 
 
 def _hosts(text: str) -> list[str]:
@@ -138,13 +149,23 @@ def proxy_evasion(env, policy, session) -> list[Finding]:
 
 @register("egress")
 def dynamic_destination(env, policy, session) -> list[Finding]:
-    m = _DYNAMIC_DESTINATION.search(env.normalized_action)
-    if not m:
-        return []
-    return [Finding(
-        ruleId="egress.dynamic_destination", severity="critical", score=100,
-        message="network destination is supplied by pipeline data, not policy-verifiable",
-        evidence=[m.group(0)[:120]], halt=True)]
+    # Evaluate one statement at a time so an unrelated earlier pipe cannot
+    # taint a later request. The variable must occupy the destination/URI slot,
+    # not merely appear in an output-file or other option.
+    for stmt in re.split(r";|\n|&&|\|\|", env.normalized_action):
+        if not _DYNAMIC_SOURCE.search(stmt):
+            continue
+        m = _DYNAMIC_URI.search(stmt)
+        if m:
+            return [Finding(
+                ruleId="egress.dynamic_destination",
+                severity="critical",
+                score=100,
+                message="network destination is supplied by pipeline data, not policy-verifiable",
+                evidence=[m.group(0)[:120]],
+                halt=True,
+            )]
+    return []
 
 
 @register("egress")
