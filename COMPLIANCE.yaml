@@ -1,0 +1,64 @@
+version: '0.1'
+system: Runwall
+repository: dburt-proex/Runwall
+canonical_registry: dburt-proex/casa/governance/CONTROL-REGISTRY.yaml
+canonical_registry_version: '0.1'
+claim_boundary: no_certification_or_attestation_claim_without_independent_assurance
+assessment_date: '2026-08-16'
+states: [NOT_APPLICABLE, MISSING, PARTIAL, IMPLEMENTED, VERIFIED]
+controls:
+  GOV-001:
+    status: IMPLEMENTED
+    evidence: [policy/default.yml, runwall/gate.py, runwall/approvals.py, docs/CLAIMS.md]
+    note: Deterministic policy and ALLOW/REVIEW/HALT-style runtime enforcement exist; organizational governance remains external.
+  RSK-001:
+    status: PARTIAL
+    evidence: [runwall/blast.py, runwall/classify.py, runwall/redteam.py]
+    gap: No canonical enterprise risk register, treatment workflow, or residual-risk acceptance record.
+  IAM-001:
+    status: IMPLEMENTED
+    evidence: [runwall/auth.py, runwall/approvals.py, runwall/harden.py]
+    note: Operator authentication, approvals, time-boxed maintenance and privilege-separation hardening are implemented.
+  CHG-001:
+    status: PARTIAL
+    evidence: [.github/workflows/ci.yml, docs/RELEASE_PILOT_GATE.md]
+    gap: Repository-local change evidence exists but is not yet bound to the canonical compliance evidence receipt.
+  LOG-001:
+    status: IMPLEMENTED
+    evidence: [runwall/ledger.py, runwall/integrity.py]
+    note: Hash-chained decision ledger and integrity verification are implemented.
+  EVD-001:
+    status: IMPLEMENTED
+    evidence: [runwall/ledger.py, runwall/integrity.py, docs/CLAIMS.md]
+    gap: Evidence receipts are not yet exported in the canonical CASA compliance schema.
+  SEC-001:
+    status: IMPLEMENTED
+    evidence: [docs/THREAT_MODEL.md, docs/AGENTIC_THREAT_MODEL_2026.md, runwall/redteam.py, runwall/harden.py]
+  INC-001:
+    status: PARTIAL
+    evidence: [runwall/daemon.py, runwall/integrity.py, docs/THREAT_MODEL.md]
+    gap: No complete incident response SOP, tabletop record, root-cause template, or corrective-action register.
+  AI-001:
+    status: PARTIAL
+    evidence: [runwall/gate.py, runwall/classify.py, policy/default.yml]
+    gap: Runtime AI action governance exists; full AI system inventory, lifecycle, TEVV and decommissioning records do not.
+  DAT-001:
+    status: PARTIAL
+    evidence: [runwall/ledger.py, docs/UNINSTRUMENTED_PATHS.md]
+    gap: Redaction exists, but no canonical data inventory, classification, retention, deletion and exception policy.
+  SUP-001:
+    status: MISSING
+    evidence: []
+    gap: No supplier/model-provider inventory and risk review.
+  BCM-001:
+    status: PARTIAL
+    evidence: [runwall/daemon.py, runwall/integrity.py]
+    gap: DEGRADED/SAFE behavior exists, but backup, restore, RTO/RPO and recovery-test evidence are missing.
+  REV-001:
+    status: PARTIAL
+    evidence: [runwall/redteam.py, runwall/claims.py, docs/RELEASE_PILOT_GATE.md]
+    gap: Technical review exists; recurring internal audit and management review records are not formalized.
+remediation:
+  p0: [RSK-001, INC-001, DAT-001, SUP-001, BCM-001]
+  p1: [CHG-001, AI-001, REV-001]
+  external_assurance_gate: blocked_until_p0_closed_or_formally_risk_accepted
