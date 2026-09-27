@@ -4,6 +4,33 @@
 
 [![Runwall CI](https://github.com/dburt-proex/Runwall/actions/workflows/ci.yml/badge.svg)](https://github.com/dburt-proex/Runwall/actions/workflows/ci.yml)
 
+## Two-minute proof
+
+Requires Python 3.11+ and Git. From a terminal:
+
+```bash
+git clone https://github.com/dburt-proex/Runwall.git
+cd Runwall
+python -m pip install -e .
+python -m runwall.cli demo
+```
+
+The demo evaluates two existing corpus fixtures **without executing either tool
+command**: `rm -rf /srv/production` must route to `HALT`; `git status --short`
+must route to `ALLOW`. It prints a decision record for each, then verifies the
+two-record hash chain. Decision IDs and hashes vary on each run. Its ledger is
+temporary and removed when the demo ends.
+
+[Watch the short terminal recording](media/runwall-offline-demo.mp4) ·
+[Exact replay steps](docs/DEMO.md) ·
+[Share first-run feedback](https://github.com/dburt-proex/Runwall/issues/new?template=first-run.md)
+
+This is an offline policy and ledger demonstration, not proof that a live harness
+intercepted either command. Runwall mediates only instrumented tool-call paths;
+see [known uninstrumented paths](docs/UNINSTRUMENTED_PATHS.md) and the
+[threat model](docs/THREAT_MODEL.md). For all attack and control cases, run
+`python -m runwall.cli redteam --offline`.
+
 > Diffwall guards what gets written. Runwall guards what gets done.
 
 Runwall is a policy enforcement point for AI agent tool calls. Before a mediated
@@ -15,6 +42,12 @@ hash-chained ledger.
 **Current posture:** bounded pilot candidate / `REVIEW`. The repository has
 multi-version CI and adversarial validation, but it does **not** claim production
 containment, universal coverage, certification, or customer-field validation.
+
+**Source and version:** This public source is available for inspection. No license
+grants permission to use, modify, or distribute it beyond GitHub's standard
+viewing and forking rights. Python package version `1.0.0` identifies the code;
+it does not authorize a pilot or production deployment. The operational gate
+remains `REVIEW`.
 
 Runwall is the runtime enforcement layer for
 [CASA](https://github.com/dburt-proex/casa) and shares governance vocabulary with
@@ -64,7 +97,7 @@ being the second. That distinction is the product.
 
 ---
 
-## Quick start
+## Live local setup
 
 Requires Python 3.11+ and PyYAML. That is the entire dependency list — a policy
 enforcement point that drags in a transitive dependency tree has enlarged the
@@ -274,6 +307,7 @@ means the same thing in both tools and a reviewer learns one vocabulary.
 | `runwall hook-install` | register the PreToolUse hook (backs up `settings.json`) |
 | `runwall redteam` | the adversarial corpus |
 | `runwall harden` | generate the privilege-separation script |
+| `runwall demo` | evaluate two offline fixtures and verify temporary decision records |
 | `runwall claims-audit` | fail the build on overclaiming language |
 
 ---

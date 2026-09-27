@@ -31,5 +31,7 @@ jobs:
         run: python -m pytest
       - name: Offline adversarial corpus
         run: runwall redteam --offline
+      - name: Two-case offline demo
+        run: python -m runwall.cli demo
       - name: Claims audit
         run: runwall claims-audit
