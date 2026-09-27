@@ -58,7 +58,7 @@ Runwall is the runtime enforcement layer for
 | Signal | Verified repository evidence |
 |---|---|
 | Supported Python | CI on 3.11, 3.12, and 3.13 |
-| Unit/regression suite | **115 passed, 1 optional integration skip** |
+| Unit/regression suite | **116 passed, 1 optional integration skip** |
 | Adversarial corpus | **88/88 passed — 63 attack cases refused, 25 controls routed exactly as expected** |
 | Claim discipline | `runwall claims-audit` passes in CI |
 | Decision integrity | hash-chained ledger, anchor verification, redaction before write |
@@ -315,7 +315,7 @@ means the same thing in both tools and a reviewer learns one vocabulary.
 ## Tests
 
 ```bash
-python -m pytest tests/ -q      # 115 passed, 1 optional integration skip in CI
+python -m pytest tests/ -q      # 116 passed, 1 optional integration skip in CI
 runwall redteam --offline       # 88/88 cases, no daemon required
 runwall claims-audit            # public-claim boundary enforced in CI
 ```
