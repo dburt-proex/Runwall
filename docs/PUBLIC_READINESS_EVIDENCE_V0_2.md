@@ -5,10 +5,11 @@
 ## Identity
 
 - Repository: `dburt-proex/Runwall`
-- Review branch: `runwall/public-readiness-hardening-v0.2`
-- Validated candidate head: `d7d6ba12451b57a181b180663296078e0b133c08`
-- Pull request: #9 — Public-readiness hardening and evidence refresh
-- GitHub Actions run: #20 (`35605439521`)
+- Reviewed PR head: `e95901d3e0d9542fc3c64e97a9e6e00140c5115e`
+- Merged `main` technical baseline: `d93f62f946ffed828e9889ad2075454b7d889e21`
+- Pull request: [#9](https://github.com/dburt-proex/Runwall/pull/9) — Public-readiness hardening and evidence refresh (merged 2026-09-22)
+- PR-head GitHub Actions run: [#22](https://github.com/dburt-proex/Runwall/actions/runs/35605566883)
+- Merged-main GitHub Actions run: [#23](https://github.com/dburt-proex/Runwall/actions/runs/35775379286)
 - Scope: close post-merge command-shape findings, strengthen regression evidence, add red-team CI, and make the public README evidence-first.
 
 ## Trigger
@@ -77,14 +78,14 @@ Those boundaries remain documented in `docs/THREAT_MODEL.md`,
 `docs/UNINSTRUMENTED_PATHS.md`, `docs/CLAIMS.md`, and
 `docs/RELEASE_PILOT_GATE.md`.
 
-## Remaining owner decisions
+## Repository presentation
 
-These are public-repository presentation decisions, not failed technical acceptance criteria:
+At the PR #9 merged baseline, these were presentation choices rather than failed technical acceptance criteria:
 
-- GitHub repository description/topics/homepage are still unset.
-- No `LICENSE` file is present; decide deliberately whether Runwall is source-available, open source, or all-rights-reserved before inviting reuse.
-- `pyproject.toml` currently reports version `1.0.0` while the operational release posture remains `REVIEW`; decide whether semantic versioning should represent package evolution or operational maturity.
+- The repository description and topics were unset. Leave the homepage blank until a distinct project page is verified.
+- The owner has chosen public inspection without a reuse license for now. No `LICENSE` file is present; the README states the source and reuse boundary. This is not an open-source grant.
+- `pyproject.toml` and `runwall/__init__.py` both report package version `1.0.0`. The README distinguishes that code identifier from the operational `REVIEW` gate. Changing version semantics or either value requires a separate coordinated decision.
 
 ## Next gate
 
-Human review of PR #9. Merge only if the owner accepts the runtime semantics, public positioning, and evidence boundary above.
+PR #9 was merged on 2026-09-22. This receipt records the technical baseline at `d93f62f946ffed828e9889ad2075454b7d889e21`; public metadata updates and documentation corrections require their own passing CI before they are cited as the current repository state.

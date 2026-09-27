@@ -314,6 +314,11 @@ def cmd_redteam(args) -> int:
     return run_corpus(args)
 
 
+def cmd_demo(args) -> int:
+    from .demo import run_demo
+    return run_demo()
+
+
 def cmd_harden(args) -> int:
     from .harden import run_harden
     return run_harden(args)
@@ -433,6 +438,8 @@ def build_parser() -> argparse.ArgumentParser:
     rt.add_argument("--offline", action="store_true",
                     help="evaluate in-process instead of against a running governor")
     rt.set_defaults(func=cmd_redteam)
+
+    sub.add_parser("demo", help="show two offline routes and decision records").set_defaults(func=cmd_demo)
 
     hd = sub.add_parser("harden", help="provision privilege separation")
     hd.add_argument("--account", default="runwall-gov")
